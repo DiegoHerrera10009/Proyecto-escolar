@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/erp_susequid
+    username: erp_user
+    password: erp_pass_2026
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 25MB
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: 8080
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  almacenamiento:
+    rutaBase: ./almacenamiento

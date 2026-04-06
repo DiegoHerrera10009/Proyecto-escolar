@@ -55,9 +55,13 @@ public class ControladorFormulario {
     }
 
     @DeleteMapping("/{id}")
-    public void eliminarFormulario(@RequestHeader("Authorization") String autorizacion, @PathVariable Long id) {
+    public void eliminarFormulario(
+            @RequestHeader("Authorization") String autorizacion,
+            @PathVariable Long id,
+            @RequestParam(value = "forzar", defaultValue = "false") boolean forzar
+    ) {
         servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR);
-        servicio.eliminarFormulario(id);
+        servicio.eliminarFormulario(id, forzar);
     }
 
     @DeleteMapping("/respuestas/{id}")

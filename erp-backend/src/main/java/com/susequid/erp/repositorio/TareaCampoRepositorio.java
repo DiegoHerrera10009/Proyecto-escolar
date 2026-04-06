@@ -19,6 +19,7 @@ public interface TareaCampoRepositorio extends JpaRepository<TareaCampo, Long> {
     long countByPlantillaFlujoId(Long plantillaFlujoId);
     List<TareaCampo> findByPlantillaFlujoId(Long plantillaFlujoId);
     long countByFormulario_Id(Long formularioId);
+    List<TareaCampo> findByFormulario_Id(Long formularioId);
 
     /** Todas las ejecuciones (no plantillas) ordenadas por fecha. */
     List<TareaCampo> findByEsPlantillaFlujoFalseOrderByFechaCreacionDesc();

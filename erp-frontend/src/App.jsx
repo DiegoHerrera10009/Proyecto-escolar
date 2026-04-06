@@ -108,15 +108,16 @@ function App() {
   const [etapasPorActividadFlujo, setEtapasPorActividadFlujo] = useState({})
   const [respuestasPasoFlujo, setRespuestasPasoFlujo] = useState({})
   const [catalogosPorEndpoint, setCatalogosPorEndpoint] = useState({})
+  const esAdmin = rolesUsuario.includes('ADMINISTRADOR')
+  const esTecnico = rolesUsuario.includes('TECNICO')
+  const esSupervisor = rolesUsuario.includes('SUPERVISOR')
 
   const resumen = useMemo(
     () => [
-      { titulo: 'Plantas eléctricas', valor: plantas.length },
-      { titulo: 'Equipos en inventario', valor: inventario.length },
+      { titulo: 'Flujos', valor: tareasCampo.filter((t) => !!t.esPlantillaFlujo).length },
       { titulo: 'Formularios dinámicos', valor: formularios.length },
-      { titulo: 'Tareas de campo', valor: tareasCampo.length },
     ],
-    [plantas.length, inventario.length, formularios.length, tareasCampo.length]
+    [tareasCampo, formularios.length]
   )
 
   useEffect(() => {
@@ -124,6 +125,21 @@ function App() {
       cargarDatos()
     }
   }, [token])
+
+  useEffect(() => {
+    if (!token) return undefined
+    const timer = setInterval(async () => {
+      await cargarDatos()
+      if (moduloActivo === 'flujos') {
+        await refrescarPanelFlujosUsuario()
+        if (esAdmin) {
+          await cargarPlantillasAdminFlujo()
+        }
+      }
+    }, 10000)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, moduloActivo, esAdmin])
 
   useEffect(() => {
     if (!menuMovilAbierto) return undefined
@@ -343,10 +359,6 @@ function App() {
     cargarDatos()
   }
 
-  const esAdmin = rolesUsuario.includes('ADMINISTRADOR')
-  const esTecnico = rolesUsuario.includes('TECNICO')
-  const esSupervisor = rolesUsuario.includes('SUPERVISOR')
-
   const refrescarPanelFlujosUsuario = useCallback(async () => {
     if (!token || (!esTecnico && !esSupervisor && !esAdmin)) return
     const flota = vistaSeccionFlujo === 'flota'
@@ -478,20 +490,52 @@ function App() {
   }
 
   const eliminarFormulario = async (formularioId) => {
-    if (!window.confirm('¿Eliminar este formulario? Esta acción no se puede deshacer.')) return
-    const resp = await fetch(`${API_URL}/formularios/${formularioId}`, {
+    if (!window.confirm('¿Eliminar este formulario?')) return
+    let resp = await fetch(`${API_URL}/formularios/${formularioId}`, {
       method: 'DELETE',
       headers: cabeceras(),
     })
     if (!resp.ok) {
       let detalle = ''
       try {
-        detalle = await resp.text()
+        const json = await resp.json()
+        detalle = json?.mensaje || json?.error || JSON.stringify(json)
       } catch {
-        detalle = ''
+        try {
+          detalle = await resp.text()
+        } catch {
+          detalle = ''
+        }
       }
-      setMensajeError(`No se pudo eliminar formulario (${resp.status}) ${detalle}`.trim())
-      return
+      if (resp.status === 400) {
+        if (window.confirm(`No se pudo eliminar en modo normal. ${detalle}\n\n¿Deseas forzar borrado y eliminar también referencias (tareas/pasos/respuestas)?`)) {
+          resp = await fetch(`${API_URL}/formularios/${formularioId}?forzar=true`, {
+            method: 'DELETE',
+            headers: cabeceras(),
+          })
+          if (!resp.ok) {
+            let detalle2 = ''
+            try {
+              const json2 = await resp.json()
+              detalle2 = json2?.mensaje || json2?.error || JSON.stringify(json2)
+            } catch {
+              try {
+                detalle2 = await resp.text()
+              } catch {
+                detalle2 = ''
+              }
+            }
+            setMensajeError(`No se pudo eliminar formulario (${resp.status}) ${detalle2}`.trim())
+            return
+          }
+        } else {
+          setMensajeError(`No se pudo eliminar formulario (${resp.status}) ${detalle}`.trim())
+          return
+        }
+      } else {
+        setMensajeError(`No se pudo eliminar formulario (${resp.status}) ${detalle}`.trim())
+        return
+      }
     }
     if (String(formularioAbiertoId) === String(formularioId)) setFormularioAbiertoId('')
     if (String(formularioEdicionId) === String(formularioId)) setFormularioEdicionId('')
@@ -555,6 +599,36 @@ function App() {
     const r = await fetch(`${API_URL}/inventario/${id}`, { method: 'DELETE', headers: cabeceras() })
     if (!r.ok) {
       setMensajeError(`No se pudo eliminar registro (${r.status})`)
+      return
+    }
+    await cargarDatos()
+  }
+
+  const eliminarTareaPendiente = async (tareaId) => {
+    if (!window.confirm('¿Eliminar esta tarea pendiente? Esta acción no se puede deshacer.')) return
+    let r = await fetch(`${API_URL}/campo/tareas/${tareaId}`, {
+      method: 'DELETE',
+      headers: cabeceras(),
+    })
+    if (r.status === 405) {
+      r = await fetch(`${API_URL}/campo/tareas/${tareaId}/eliminar`, {
+        method: 'POST',
+        headers: cabeceras(),
+      })
+    }
+    if (!r.ok) {
+      let detalle = ''
+      try {
+        const json = await r.json()
+        detalle = json?.mensaje || json?.error || JSON.stringify(json)
+      } catch {
+        try {
+          detalle = await r.text()
+        } catch {
+          detalle = ''
+        }
+      }
+      setMensajeError(`No se pudo eliminar tarea (${r.status}) ${detalle}`.trim())
       return
     }
     await cargarDatos()
@@ -1099,10 +1173,6 @@ function App() {
                 Historial <span className="badge-tab">{actividadesFlujoHistorial.length}</span>
               </button>
             </div>
-            <p className="texto-ayuda-tecnico" style={{ marginTop: '0.75rem' }}>
-              <strong>Disponibles</strong>: solo aparecen flujos que <strong>tú puedes iniciar</strong> según tu rol. <strong>Mis actividades</strong>: lo que debes hacer ahora; debajo, <strong>Seguimiento</strong> es para ver el avance sin editar hasta que vuelva tu turno. Al terminar todo, la instancia va a <strong>Historial</strong>.
-            </p>
-
             {vistaPanelFlujo === 'disponibles' && (
               <div className="grid-actividades-tecnico" style={{ marginTop: '1rem' }}>
                 {plantillasMenuFlujo.length === 0 && <p>No hay flujos disponibles en esta sección.</p>}
@@ -1336,8 +1406,15 @@ function App() {
                   <span>{pendientesAdmin.length} tareas</span>
                 </div>
                 <TablaSimple
-                  columnas={['Id', 'Tarea', 'Estado', 'Técnico', 'Formulario']}
-                  filas={pendientesAdmin.map((t) => [t.id, t.titulo, renderEstadoTarea(t.estado), t.asignadoA?.correo, t.formulario?.nombre])}
+                  columnas={['Id', 'Tarea', 'Estado', 'Técnico', 'Formulario', 'Acciones']}
+                  filas={pendientesAdmin.map((t) => [
+                    t.id,
+                    t.titulo,
+                    renderEstadoTarea(t.estado),
+                    t.asignadoA?.correo,
+                    t.formulario?.nombre,
+                    <button key={`del-tarea-${t.id}`} type="button" className="btn-peligro" onClick={() => eliminarTareaPendiente(t.id)}>Eliminar</button>,
+                  ])}
                 />
               </div>
             )}

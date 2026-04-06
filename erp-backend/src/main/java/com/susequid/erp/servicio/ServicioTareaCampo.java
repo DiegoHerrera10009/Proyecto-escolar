@@ -6,6 +6,7 @@ import com.susequid.erp.dto.AsignarTareaCampoPeticion;
 import com.susequid.erp.entidad.*;
 import com.susequid.erp.repositorio.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -20,6 +21,7 @@ public class ServicioTareaCampo {
     private final FormularioDinamicoRepositorio formularioRepositorio;
     private final PlantaElectricaRepositorio plantaRepositorio;
     private final EquipoInventarioRepositorio equipoRepositorio;
+    private final RespuestaFormularioRepositorio respuestaRepositorio;
 
     private static final Map<EstadoTareaCampo, EnumSet<EstadoTareaCampo>> TRANSICIONES_BASE = Map.of(
             EstadoTareaCampo.PENDIENTE, EnumSet.of(EstadoTareaCampo.EN_PROCESO, EstadoTareaCampo.CANCELADA),
@@ -36,7 +38,8 @@ public class ServicioTareaCampo {
             UsuarioRepositorio usuarioRepositorio,
             FormularioDinamicoRepositorio formularioRepositorio,
             PlantaElectricaRepositorio plantaRepositorio,
-            EquipoInventarioRepositorio equipoRepositorio
+            EquipoInventarioRepositorio equipoRepositorio,
+            RespuestaFormularioRepositorio respuestaRepositorio
     ) {
         this.tareaRepositorio = tareaRepositorio;
         this.historialRepositorio = historialRepositorio;
@@ -45,6 +48,7 @@ public class ServicioTareaCampo {
         this.formularioRepositorio = formularioRepositorio;
         this.plantaRepositorio = plantaRepositorio;
         this.equipoRepositorio = equipoRepositorio;
+        this.respuestaRepositorio = respuestaRepositorio;
     }
 
     public List<TareaCampo> listarTodas() {
@@ -183,6 +187,13 @@ public class ServicioTareaCampo {
             tarea.setFormulario(formulario);
         }
         return tareaRepositorio.save(tarea);
+    }
+
+    @Transactional
+    public void eliminarTarea(Long tareaId) {
+        TareaCampo tarea = buscarPorId(tareaId);
+        respuestaRepositorio.deleteByEtapaTareaCampo_Tarea_Id(tareaId);
+        tareaRepositorio.delete(tarea);
     }
 
     private void validarPermisoPorRolYFlujo(

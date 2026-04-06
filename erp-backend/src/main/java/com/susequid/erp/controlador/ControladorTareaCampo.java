@@ -72,5 +72,17 @@ public class ControladorTareaCampo {
         autorizacion.requerirUsuario(auth);
         return servicio.listarEtapas(id);
     }
+
+    @DeleteMapping("/{id}")
+    public void eliminar(@RequestHeader("Authorization") String auth, @PathVariable Long id) {
+        autorizacion.requerirRol(auth, RolNombre.ADMINISTRADOR);
+        servicio.eliminarTarea(id);
+    }
+
+    @PostMapping("/{id}/eliminar")
+    public void eliminarPost(@RequestHeader("Authorization") String auth, @PathVariable Long id) {
+        autorizacion.requerirRol(auth, RolNombre.ADMINISTRADOR);
+        servicio.eliminarTarea(id);
+    }
 }
 

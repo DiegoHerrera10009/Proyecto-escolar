@@ -10,5 +10,6 @@ public interface EtapaTareaCampoRepositorio extends JpaRepository<EtapaTareaCamp
     @EntityGraph(attributePaths = { "formulario", "completadaPor" })
     List<EtapaTareaCampo> findByTarea_IdOrderByOrdenAsc(Long tareaId);
     long countByFormulario_Id(Long formularioId);
+    List<EtapaTareaCampo> findByFormulario_Id(Long formularioId);
 }
 

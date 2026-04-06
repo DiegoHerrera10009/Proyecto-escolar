@@ -53,4 +53,16 @@ public class ControladorFormulario {
         servicioAutorizacion.requerirRol(autorizacion, RolNombre.HSEQ, RolNombre.TECNICO);
         return servicio.guardarRespuesta(respuesta);
     }
+
+    @DeleteMapping("/{id}")
+    public void eliminarFormulario(@RequestHeader("Authorization") String autorizacion, @PathVariable Long id) {
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR);
+        servicio.eliminarFormulario(id);
+    }
+
+    @DeleteMapping("/respuestas/{id}")
+    public void eliminarRespuesta(@RequestHeader("Authorization") String autorizacion, @PathVariable Long id) {
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR);
+        servicio.eliminarRespuesta(id);
+    }
 }

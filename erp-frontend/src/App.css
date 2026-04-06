@@ -645,3 +645,234 @@ tbody tr:hover {
     align-items: flex-start;
   }
 }
+
+/* Panel flujos / actividades */
+.grid-actividades-tecnico {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.tarjeta-actividad-tecnico {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tarjeta-actividad-tecnico:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.tema-oscuro .tarjeta-actividad-tecnico {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.tarjeta-actividad-titulo {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.tarjeta-actividad-hint {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.panel-dashboard-tecnico .tabs-sub-tecnico {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-tab-sub-tecnico {
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  background: #f8fafc;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn-tab-sub-tecnico.activo {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  font-weight: 600;
+}
+
+.tema-oscuro .btn-tab-sub-tecnico {
+  background: #1e293b;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+/* ===== Estados faltantes ===== */
+.chip-borrador {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #94a3b8;
+}
+
+.chip-publicada {
+  background: #ecfdf5;
+  color: #059669;
+  border-color: #6ee7b7;
+}
+
+/* ===== Barra de progreso del flujo ===== */
+.barra-progreso-flujo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.barra-progreso-track {
+  flex: 1;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.barra-progreso-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb 0%, #06b6d4 100%);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.barra-progreso-texto {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.tema-oscuro .barra-progreso-track {
+  background: #334155;
+}
+
+.tema-oscuro .barra-progreso-texto {
+  color: #94a3b8;
+}
+
+/* ===== Botones de reordenar pasos ===== */
+.btn-reordenar {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: background 0.15s ease;
+}
+
+.btn-reordenar:hover {
+  background: #e2e8f0;
+}
+
+.btn-reordenar:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.tema-oscuro .btn-reordenar {
+  background: #1e293b;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+/* ===== Info de referencia ===== */
+.texto-ref-id {
+  display: block;
+  font-size: 0.82rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+}
+
+.tema-oscuro .texto-ref-id {
+  color: #94a3b8;
+}
+
+.texto-ayuda-tecnico {
+  font-size: 0.85rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.tema-oscuro .texto-ayuda-tecnico {
+  color: #94a3b8;
+}
+
+/* ===== Etapas en admin ===== */
+.lista-etapas-admin {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.item-etapa-admin {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.88rem;
+}
+
+.item-etapa-admin .orden-etapa {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.tema-oscuro .item-etapa-admin {
+  background: #1e293b;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+/* ===== Badge de emergencia ===== */
+.btn-emergencia {
+  border: 1px solid #dc2626;
+  background: #fef2f2;
+  color: #b91c1c;
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.82rem;
+  transition: background 0.15s ease;
+}
+
+.btn-emergencia:hover {
+  background: #fee2e2;
+}
+
+.tema-oscuro .btn-emergencia {
+  background: #3f1d1d;
+  color: #fecaca;
+  border-color: #b91c1c;
+}

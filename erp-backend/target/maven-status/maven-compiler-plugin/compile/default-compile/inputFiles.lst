@@ -2,6 +2,7 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\config\Con
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\config\ManejadorGlobalExcepciones.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorAutenticacion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorEvidenciaDigital.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorFlujoCampo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorFormulario.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorInventario.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorPlantaElectrica.java
@@ -12,9 +13,13 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\Asigna
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CambioEstadoTareaCampoPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CambioEstadoWorkflowPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CambioRolUsuarioPeticion.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CompletarPasoFlujoPeticion.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearInstanciaFlujoPeticion.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearPlantillaFlujoPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearTareaCampoPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\LoginPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\LoginRespuesta.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\PasoFlujoDefPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\RegistroUsuarioPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\BitacoraWorkflow.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\EquipoInventario.java
@@ -30,8 +35,10 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\Pl
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\RespuestaFormulario.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\Rol.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\RolNombre.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\SeccionPanelFlujo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\TareaCampo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\TipoEvidencia.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\TipoVisibilidadFlujo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\Usuario.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\WorkflowProceso.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\ErpBackendApplication.java
@@ -50,6 +57,7 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositori
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioAutenticacion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioAutorizacion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioEvidenciaDigital.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioFlujoCampo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioFormulario.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioInventario.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioPlantaElectrica.java

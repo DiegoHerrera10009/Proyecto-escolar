@@ -33,6 +33,10 @@ public class RespuestaFormulario {
     @Column(nullable = false)
     private LocalDateTime fechaRegistro = LocalDateTime.now();
 
+    @ManyToOne
+    @JoinColumn(name = "etapa_tarea_campo_id")
+    private EtapaTareaCampo etapaTareaCampo;
+
     public Long getId() {
         return id;
     }
@@ -79,5 +83,13 @@ public class RespuestaFormulario {
 
     public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
+    }
+
+    public EtapaTareaCampo getEtapaTareaCampo() {
+        return etapaTareaCampo;
+    }
+
+    public void setEtapaTareaCampo(EtapaTareaCampo etapaTareaCampo) {
+        this.etapaTareaCampo = etapaTareaCampo;
     }
 }

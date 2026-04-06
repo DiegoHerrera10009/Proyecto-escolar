@@ -21,13 +21,13 @@ public class ControladorPlantaElectrica {
 
     @GetMapping
     public List<PlantaElectrica> listar(@RequestHeader("Authorization") String autorizacion) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.TECNICO, RolNombre.HSEQ, RolNombre.BODEGA, RolNombre.COMPRAS);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.TECNICO, RolNombre.HSEQ, RolNombre.BODEGA, RolNombre.COMPRAS);
         return servicio.listar();
     }
 
     @GetMapping("/{id}")
     public PlantaElectrica buscar(@RequestHeader("Authorization") String autorizacion, @PathVariable Long id) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.TECNICO, RolNombre.HSEQ, RolNombre.BODEGA, RolNombre.COMPRAS);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.TECNICO, RolNombre.HSEQ, RolNombre.BODEGA, RolNombre.COMPRAS);
         return servicio.buscarPorId(id);
     }
 

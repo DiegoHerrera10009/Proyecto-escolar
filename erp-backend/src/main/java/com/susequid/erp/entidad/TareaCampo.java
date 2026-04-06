@@ -1,6 +1,7 @@
 package com.susequid.erp.entidad;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
@@ -51,6 +52,33 @@ public class TareaCampo {
     private LocalDateTime fechaCreacion = LocalDateTime.now();
 
     private LocalDateTime fechaVencimiento;
+
+    /** Definición de flujo (plantilla) vs ejecución concreta. */
+    @Column(name = "es_plantilla_flujo", nullable = false)
+    private Boolean esPlantillaFlujo = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_visibilidad_flujo")
+    private TipoVisibilidadFlujo tipoVisibilidadFlujo;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "seccion_panel", nullable = false)
+    private SeccionPanelFlujo seccionPanel = SeccionPanelFlujo.OPERATIVOS;
+
+    @Column(name = "visible_en_menu_flujo", nullable = false)
+    private Boolean visibleEnMenuFlujo = false;
+
+    /**
+     * Rol que puede ver el flujo en «Disponibles» e iniciar la ejecución (coincide con el primer paso).
+     * {@link RolNombre#name()} — ej. TECNICO, SUPERVISOR.
+     */
+    @Column(name = "menu_inicio_rol", nullable = false, length = 50)
+    private String menuInicioRol = RolNombre.TECNICO.name();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plantilla_flujo_id")
+    @JsonIgnore
+    private TareaCampo plantillaFlujo;
 
     @OneToMany(mappedBy = "tarea", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnore
@@ -170,6 +198,60 @@ public class TareaCampo {
 
     public List<EtapaTareaCampo> getEtapas() {
         return etapas;
+    }
+
+    public Boolean getEsPlantillaFlujo() {
+        return esPlantillaFlujo;
+    }
+
+    public void setEsPlantillaFlujo(Boolean esPlantillaFlujo) {
+        this.esPlantillaFlujo = esPlantillaFlujo != null ? esPlantillaFlujo : false;
+    }
+
+    public TipoVisibilidadFlujo getTipoVisibilidadFlujo() {
+        return tipoVisibilidadFlujo;
+    }
+
+    public void setTipoVisibilidadFlujo(TipoVisibilidadFlujo tipoVisibilidadFlujo) {
+        this.tipoVisibilidadFlujo = tipoVisibilidadFlujo;
+    }
+
+    public SeccionPanelFlujo getSeccionPanel() {
+        return seccionPanel;
+    }
+
+    public void setSeccionPanel(SeccionPanelFlujo seccionPanel) {
+        this.seccionPanel = seccionPanel != null ? seccionPanel : SeccionPanelFlujo.OPERATIVOS;
+    }
+
+    public Boolean getVisibleEnMenuFlujo() {
+        return visibleEnMenuFlujo;
+    }
+
+    public void setVisibleEnMenuFlujo(Boolean visibleEnMenuFlujo) {
+        this.visibleEnMenuFlujo = visibleEnMenuFlujo != null ? visibleEnMenuFlujo : false;
+    }
+
+    public String getMenuInicioRol() {
+        return menuInicioRol;
+    }
+
+    public void setMenuInicioRol(String menuInicioRol) {
+        this.menuInicioRol = menuInicioRol != null && !menuInicioRol.isBlank() ? menuInicioRol.trim() : RolNombre.TECNICO.name();
+    }
+
+    public TareaCampo getPlantillaFlujo() {
+        return plantillaFlujo;
+    }
+
+    public void setPlantillaFlujo(TareaCampo plantillaFlujo) {
+        this.plantillaFlujo = plantillaFlujo;
+    }
+
+    @JsonProperty("plantillaFlujoId")
+    @Transient
+    public Long getPlantillaFlujoIdExpuesto() {
+        return plantillaFlujo != null ? plantillaFlujo.getId() : null;
     }
 }
 

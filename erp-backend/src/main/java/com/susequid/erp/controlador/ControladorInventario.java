@@ -21,7 +21,7 @@ public class ControladorInventario {
 
     @GetMapping
     public List<EquipoInventario> listar(@RequestHeader("Authorization") String autorizacion) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.BODEGA, RolNombre.COMPRAS, RolNombre.TECNICO);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.BODEGA, RolNombre.COMPRAS, RolNombre.TECNICO);
         return servicio.listar();
     }
 

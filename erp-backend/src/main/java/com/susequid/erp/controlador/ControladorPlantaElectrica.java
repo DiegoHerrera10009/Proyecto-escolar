@@ -21,25 +21,25 @@ public class ControladorPlantaElectrica {
 
     @GetMapping
     public List<PlantaElectrica> listar(@RequestHeader("Authorization") String autorizacion) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.TECNICO, RolNombre.HSEQ, RolNombre.BODEGA, RolNombre.COMPRAS);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.TECNICO, RolNombre.HSEQ, RolNombre.BODEGA, RolNombre.COMPRAS);
         return servicio.listar();
     }
 
     @GetMapping("/{id}")
     public PlantaElectrica buscar(@RequestHeader("Authorization") String autorizacion, @PathVariable Long id) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.TECNICO, RolNombre.HSEQ, RolNombre.BODEGA, RolNombre.COMPRAS);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.TECNICO, RolNombre.HSEQ, RolNombre.BODEGA, RolNombre.COMPRAS);
         return servicio.buscarPorId(id);
     }
 
     @PostMapping
     public PlantaElectrica crear(@RequestHeader("Authorization") String autorizacion, @RequestBody PlantaElectrica planta) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.TECNICO, RolNombre.BODEGA);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.TECNICO, RolNombre.BODEGA);
         return servicio.guardar(planta);
     }
 
     @PutMapping("/{id}")
     public PlantaElectrica actualizar(@RequestHeader("Authorization") String autorizacion, @PathVariable Long id, @RequestBody PlantaElectrica planta) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.TECNICO, RolNombre.HSEQ);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.TECNICO, RolNombre.HSEQ);
         PlantaElectrica existente = servicio.buscarPorId(id);
         existente.setNombre(planta.getNombre());
         existente.setSerial(planta.getSerial());

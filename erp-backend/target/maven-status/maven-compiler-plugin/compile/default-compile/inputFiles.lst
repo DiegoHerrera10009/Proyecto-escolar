@@ -5,6 +5,7 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlado
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorFlujoCampo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorFormulario.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorInventario.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorInventarioCatalogo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorPlantaElectrica.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorTareaCampo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\controlador\ControladorUsuario.java
@@ -14,9 +15,11 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\Cambio
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CambioEstadoWorkflowPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CambioRolUsuarioPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CompletarPasoFlujoPeticion.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearCatalogoInventarioPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearInstanciaFlujoPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearPlantillaFlujoPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearTareaCampoPeticion.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\EliminarCatalogoInventarioPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\LoginPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\LoginRespuesta.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\PasoFlujoDefPeticion.java
@@ -30,6 +33,8 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\Et
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\EvidenciaDigital.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\FormularioDinamico.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\HistorialTareaCampo.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\InventarioCatalogo.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\InventarioItem.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\MantenimientoPlanta.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\PlantaElectrica.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\entidad\RespuestaFormulario.java
@@ -48,6 +53,8 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositori
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositorio\EvidenciaDigitalRepositorio.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositorio\FormularioDinamicoRepositorio.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositorio\HistorialTareaCampoRepositorio.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositorio\InventarioCatalogoRepositorio.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositorio\InventarioItemRepositorio.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositorio\PlantaElectricaRepositorio.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositorio\RespuestaFormularioRepositorio.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\repositorio\RolRepositorio.java
@@ -60,6 +67,7 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\S
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioFlujoCampo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioFormulario.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioInventario.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioInventarioCatalogo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioPlantaElectrica.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioTareaCampo.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\servicio\ServicioUsuario.java

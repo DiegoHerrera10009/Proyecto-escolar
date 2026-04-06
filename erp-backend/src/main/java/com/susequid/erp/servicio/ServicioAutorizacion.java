@@ -42,6 +42,24 @@ public class ServicioAutorizacion {
         return usuario;
     }
 
+    /**
+     * Exige la clave del usuario ya autenticado (p. ej. borrado de un inventario completo).
+     * Recarga el usuario desde la base de datos para comparar con el hash real de la clave.
+     */
+    public void verificarClaveUsuario(Usuario usuario, String clavePlana) {
+        if (clavePlana == null || clavePlana.isBlank()) {
+            throw new IllegalArgumentException("Debe ingresar su clave para confirmar esta accion");
+        }
+        String claveTrim = clavePlana.trim();
+        if (claveTrim.isEmpty()) {
+            throw new IllegalArgumentException("Debe ingresar su clave para confirmar esta accion");
+        }
+        Usuario desdeBd = servicioAutenticacion.obtenerUsuarioConClavePorId(usuario.getId());
+        if (!servicioAutenticacion.claveCoincide(desdeBd, claveTrim)) {
+            throw new IllegalArgumentException("La clave no es correcta");
+        }
+    }
+
     private String extraerToken(String cabeceraAutorizacion) {
         if (cabeceraAutorizacion == null || !cabeceraAutorizacion.startsWith("Bearer ")) {
             throw new RuntimeException("Debe enviar Authorization: Bearer <token>");

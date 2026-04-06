@@ -3,6 +3,39 @@ import './App.css'
 
 const API_URL = 'http://localhost:8080/api'
 
+const COLUMNAS_INVENTARIO_RESERVADAS = new Set(['nombre', 'serial', 'responsable', 'estado', 'ubicacion'])
+const REGEX_NOMBRE_COLUMNA_PERSONALIZADA_INV = /^[\p{L}0-9 .,_\-]+$/u
+
+function esColumnaInventarioEstandar(k) {
+  return COLUMNAS_INVENTARIO_RESERVADAS.has(String(k).toLowerCase())
+}
+
+function nombreColumnaPersonalizadaInventarioValido(t) {
+  const s = String(t).trim()
+  if (s.length < 1 || s.length > 80) return false
+  if (COLUMNAS_INVENTARIO_RESERVADAS.has(s.toLowerCase())) return false
+  return REGEX_NOMBRE_COLUMNA_PERSONALIZADA_INV.test(s)
+}
+
+function parseColumnasCatalogoInventario(cat) {
+  if (!cat?.columnasJson) return ['nombre', 'serial', 'responsable', 'estado', 'ubicacion']
+  try {
+    const arr = JSON.parse(cat.columnasJson)
+    if (Array.isArray(arr) && arr.length) return arr
+  } catch {
+    // ignore
+  }
+  return ['nombre', 'serial', 'responsable', 'estado', 'ubicacion']
+}
+
+function nuevaFilaColumnaPersonalizadaInventario() {
+  const id =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `col-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  return { id, nombre: '' }
+}
+
 function App() {
   const [token, setToken] = useState(localStorage.getItem('erp_token') || '')
   const [correoLogin, setCorreoLogin] = useState('')
@@ -20,9 +53,37 @@ function App() {
   const [menuMovilAbierto, setMenuMovilAbierto] = useState(false)
 
   const [moduloActivo, setModuloActivo] = useState('dashboard')
-  const [vistaInventario, setVistaInventario] = useState('plantas')
+  /** menu | ver | crear */
+  const [vistaInventario, setVistaInventario] = useState('menu')
+  /** preset:plantas | preset:herramientas | catalog:ID */
+  const [inventarioVerSeleccion, setInventarioVerSeleccion] = useState('')
   const [plantas, setPlantas] = useState([])
   const [inventario, setInventario] = useState([])
+  const [catalogosInventarioLista, setCatalogosInventarioLista] = useState([])
+  const [catalogoActivoId, setCatalogoActivoId] = useState('')
+  const [itemsCatalogoActivo, setItemsCatalogoActivo] = useState([])
+  const [nuevoInventarioNombre, setNuevoInventarioNombre] = useState('')
+  const [columnasNuevoInventario, setColumnasNuevoInventario] = useState({
+    serial: true,
+    responsable: true,
+    ubicacion: true,
+    estado: true,
+  })
+  const [columnasPersonalizadasNuevoInventario, setColumnasPersonalizadasNuevoInventario] = useState([])
+  const [modalBorrarCatalogoInventario, setModalBorrarCatalogoInventario] = useState({
+    abierto: false,
+    catalogoId: null,
+    clave: '',
+    error: '',
+  })
+  const [nuevoItemCatalogo, setNuevoItemCatalogo] = useState({
+    nombre: '',
+    serial: '',
+    responsable: '',
+    ubicacion: '',
+    estado: 'ACTIVO',
+    datosExtra: {},
+  })
   const [formularios, setFormularios] = useState([])
   const [respuestasFormularios, setRespuestasFormularios] = useState([])
   const [tareasCampo, setTareasCampo] = useState([])
@@ -44,6 +105,7 @@ function App() {
       multiple: false,
       catalogoInventario: 'HERRAMIENTAS',
       inventarioIds: [],
+      catalogoPersonalizadoId: '',
       campoEtiquetaInventario: 'nombre',
       campoValorInventario: 'id',
     },
@@ -162,11 +224,27 @@ function App() {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
   })
+
   const cabecerasAuth = () => ({ Authorization: `Bearer ${token}` })
   const normalizarEndpointCatalogo = (valor) => {
     const limpio = String(valor || '').trim()
     if (!limpio) return '/inventario'
     return limpio.startsWith('/') ? limpio : `/${limpio}`
+  }
+
+  /** Resuelve el endpoint API para campos select con origen inventario (plantas, herramientas o catálogo personalizado). */
+  const resolverEndpointInventarioCampo = (campo) => {
+    const raw = campo?.endpointOpciones
+    if (raw && String(raw).trim()) {
+      return normalizarEndpointCatalogo(raw)
+    }
+    const cat = campo?.catalogoInventario || 'HERRAMIENTAS'
+    if (cat === 'PLANTAS') return '/plantas'
+    if (cat === 'HERRAMIENTAS') return '/inventario'
+    if (cat === 'PERSONALIZADO' && campo?.catalogoPersonalizadoId) {
+      return `/inventarios/catalogos/${campo.catalogoPersonalizadoId}/items`
+    }
+    return '/inventario'
   }
 
   const login = async (e) => {
@@ -198,6 +276,13 @@ function App() {
     setRolesUsuario([])
     setPlantas([])
     setInventario([])
+    setCatalogosInventarioLista([])
+    setCatalogoActivoId('')
+    setItemsCatalogoActivo([])
+    setVistaInventario('menu')
+    setInventarioVerSeleccion('')
+    setNuevoInventarioNombre('')
+    setColumnasNuevoInventario({ serial: true, responsable: true, ubicacion: true, estado: true })
     setFormularios([])
     setRespuestasFormularios([])
     setTareasCampo([])
@@ -218,16 +303,23 @@ function App() {
   const irAModulo = (modulo) => {
     setModuloActivo(modulo)
     setMenuMovilAbierto(false)
+    if (modulo === 'inventario') {
+      setVistaInventario('menu')
+      setInventarioVerSeleccion('')
+      setCatalogoActivoId('')
+      setItemsCatalogoActivo([])
+    }
   }
 
   const cargarDatos = async () => {
     try {
-      const [resPlantas, resInventario, resFormularios] = await Promise.all([
+      const [resPlantas, resInventario, resFormularios, resCatalogosInv] = await Promise.all([
         fetch(`${API_URL}/plantas`, { headers: cabeceras() }),
         fetch(`${API_URL}/inventario`, { headers: cabeceras() }),
         fetch(`${API_URL}/formularios`, { headers: cabeceras() }),
+        fetch(`${API_URL}/inventarios/catalogos`, { headers: cabeceras() }),
       ])
-      if ([resPlantas, resInventario, resFormularios].some((r) => r.status === 401)) {
+      if ([resPlantas, resInventario, resFormularios, resCatalogosInv].some((r) => r.status === 401)) {
         cerrarSesion()
         setMensajeError('Sesión expirada, inicia sesión de nuevo')
         return
@@ -237,6 +329,16 @@ function App() {
       const rawF = await resFormularios.json()
       setPlantas(Array.isArray(rawP) ? rawP : [])
       setInventario(Array.isArray(rawI) ? rawI : [])
+      if (resCatalogosInv.ok) {
+        try {
+          const rawCat = await resCatalogosInv.json()
+          setCatalogosInventarioLista(Array.isArray(rawCat) ? rawCat : [])
+        } catch {
+          setCatalogosInventarioLista([])
+        }
+      } else {
+        setCatalogosInventarioLista([])
+      }
       if (!resFormularios.ok) {
         setFormularios([])
         setMensajeError(`No se pudieron cargar formularios (${resFormularios.status})`)
@@ -272,24 +374,342 @@ function App() {
 
   const guardarPlanta = async (e) => {
     e.preventDefault()
-    await fetch(`${API_URL}/plantas`, {
-      method: 'POST',
-      headers: cabeceras(),
-      body: JSON.stringify(nuevaPlanta),
-    })
-    setNuevaPlanta({ nombre: '', serial: '', ubicacion: '', estado: 'ACTIVO' })
-    cargarDatos()
+    setMensajeError('')
+    try {
+      const r = await fetch(`${API_URL}/plantas`, {
+        method: 'POST',
+        headers: cabeceras(),
+        body: JSON.stringify(nuevaPlanta),
+      })
+      if (!r.ok) {
+        let detalle = ''
+        try {
+          const j = await r.json()
+          detalle = j.message || j.mensaje || j.error || JSON.stringify(j)
+        } catch {
+          try {
+            detalle = await r.text()
+          } catch {
+            detalle = ''
+          }
+        }
+        setMensajeError(`No se pudo guardar la planta (${r.status}) ${detalle}`.trim())
+        return
+      }
+      setNuevaPlanta({ nombre: '', serial: '', ubicacion: '', estado: 'ACTIVO' })
+      await cargarDatos()
+    } catch {
+      setMensajeError('No se pudo conectar con el servidor al guardar la planta')
+    }
   }
 
   const guardarEquipo = async (e) => {
     e.preventDefault()
-    await fetch(`${API_URL}/inventario`, {
-      method: 'POST',
-      headers: cabeceras(),
-      body: JSON.stringify(nuevoEquipo),
+    setMensajeError('')
+    try {
+      const r = await fetch(`${API_URL}/inventario`, {
+        method: 'POST',
+        headers: cabeceras(),
+        body: JSON.stringify(nuevoEquipo),
+      })
+      if (!r.ok) {
+        let detalle = ''
+        try {
+          const j = await r.json()
+          detalle = j.message || j.mensaje || j.error || JSON.stringify(j)
+        } catch {
+          try {
+            detalle = await r.text()
+          } catch {
+            detalle = ''
+          }
+        }
+        setMensajeError(`No se pudo guardar el equipo (${r.status}) ${detalle}`.trim())
+        return
+      }
+      setNuevoEquipo({ nombre: '', serial: '', responsable: '', estado: 'ACTIVO', ubicacion: '' })
+      await cargarDatos()
+    } catch {
+      setMensajeError('No se pudo conectar con el servidor al guardar el equipo')
+    }
+  }
+
+  const invalidarCacheEndpointCatalogo = (endpointRelativo) => {
+    const ep = normalizarEndpointCatalogo(endpointRelativo).toLowerCase()
+    setCatalogosPorEndpoint((prev) => {
+      const next = { ...prev }
+      delete next[ep]
+      return next
     })
-    setNuevoEquipo({ nombre: '', serial: '', responsable: '', estado: 'ACTIVO', ubicacion: '' })
-    cargarDatos()
+  }
+
+  const construirColumnasNuevoInventario = () => {
+    const columnas = ['nombre']
+    if (columnasNuevoInventario.serial) columnas.push('serial')
+    if (columnasNuevoInventario.responsable) columnas.push('responsable')
+    if (columnasNuevoInventario.ubicacion) columnas.push('ubicacion')
+    if (columnasNuevoInventario.estado) columnas.push('estado')
+    const vistos = new Set(columnas.map((c) => c.toLowerCase()))
+    for (const row of columnasPersonalizadasNuevoInventario) {
+      const t = row.nombre.trim()
+      if (!t) continue
+      const low = t.toLowerCase()
+      if (vistos.has(low)) continue
+      if (!nombreColumnaPersonalizadaInventarioValido(t)) continue
+      vistos.add(low)
+      columnas.push(t)
+    }
+    return columnas
+  }
+
+  const crearCatalogoInventarioAdmin = async (e) => {
+    e.preventDefault()
+    setMensajeError('')
+    const nombre = nuevoInventarioNombre.trim()
+    if (!nombre) return
+    for (const row of columnasPersonalizadasNuevoInventario) {
+      const t = row.nombre.trim()
+      if (!t) continue
+      if (!nombreColumnaPersonalizadaInventarioValido(t)) {
+        setMensajeError(
+          `Columna «${t}» no válida: usa letras, números, espacios y . , _ - (máx. 80). No uses nombres reservados (Nombre, Serial, Responsable, Ubicación, Estado).`,
+        )
+        return
+      }
+    }
+    const columnas = construirColumnasNuevoInventario()
+    try {
+      const r = await fetch(`${API_URL}/inventarios/catalogos`, {
+        method: 'POST',
+        headers: cabeceras(),
+        body: JSON.stringify({ nombre, columnas }),
+      })
+      if (!r.ok) {
+        let detalle = ''
+        try {
+          const j = await r.json()
+          detalle = j.mensaje || j.message || ''
+        } catch {
+          try {
+            detalle = await r.text()
+          } catch {
+            detalle = ''
+          }
+        }
+        setMensajeError(`No se pudo crear el inventario (${r.status}) ${detalle}`.trim())
+        return
+      }
+      let creado = {}
+      try {
+        creado = await r.json()
+      } catch {
+        creado = {}
+      }
+      setNuevoInventarioNombre('')
+      setColumnasNuevoInventario({ serial: true, responsable: true, ubicacion: true, estado: true })
+      setColumnasPersonalizadasNuevoInventario([])
+      await cargarDatos()
+      if (creado?.id != null) {
+        const sid = String(creado.id)
+        setInventarioVerSeleccion(`catalog:${sid}`)
+        setCatalogoActivoId(sid)
+        setVistaInventario('ver')
+        await cargarItemsCatalogoSeleccionado(sid)
+      } else {
+        setVistaInventario('ver')
+      }
+    } catch {
+      setMensajeError('Error de conexión al crear el inventario')
+    }
+  }
+
+  const abrirModalBorrarCatalogoInventario = (id) => {
+    setModalBorrarCatalogoInventario({ abierto: true, catalogoId: id, clave: '', error: '' })
+    setMensajeError('')
+  }
+
+  const cerrarModalBorrarCatalogoInventario = () => {
+    setModalBorrarCatalogoInventario({ abierto: false, catalogoId: null, clave: '', error: '' })
+  }
+
+  const ejecutarBorradoCatalogoInventarioConfirmado = async () => {
+    const id = modalBorrarCatalogoInventario.catalogoId
+    const claveTrim = (modalBorrarCatalogoInventario.clave || '').trim()
+    if (!id) return
+    if (!claveTrim) {
+      setModalBorrarCatalogoInventario((prev) => ({
+        ...prev,
+        error: 'Ingresa tu contraseña para confirmar la eliminación.',
+      }))
+      return
+    }
+    setModalBorrarCatalogoInventario((prev) => ({ ...prev, error: '' }))
+    try {
+      const intentarEliminar = (forzar) => {
+        const q = forzar ? '?forzar=true' : ''
+        return fetch(`${API_URL}/inventarios/catalogos/${id}/eliminar${q}`, {
+          method: 'POST',
+          headers: cabeceras(),
+          body: JSON.stringify({ claveConfirmacion: claveTrim }),
+        })
+      }
+      let r = await intentarEliminar(false)
+      if (r.status === 400) {
+        let msg = ''
+        try {
+          const j = await r.json()
+          msg = j.mensaje || ''
+        } catch {
+          try {
+            msg = await r.text()
+          } catch {
+            msg = ''
+          }
+        }
+        const pideForzar =
+          typeof msg === 'string' &&
+          msg.includes('ítems') &&
+          (msg.includes('forzado') || msg.includes('Elimínalos'))
+        if (pideForzar) {
+          if (
+            !window.confirm(
+              `${msg}\n\n¿Forzar borrado eliminando también todos los ítems? Se requiere la misma contraseña ya ingresada.`,
+            )
+          ) {
+            return
+          }
+          r = await intentarEliminar(true)
+        } else {
+          setModalBorrarCatalogoInventario((prev) => ({
+            ...prev,
+            error: msg.trim() || 'No se pudo eliminar el catálogo',
+          }))
+          return
+        }
+      }
+      if (!r.ok) {
+        let detalle = ''
+        try {
+          const j = await r.json()
+          detalle = j.mensaje || ''
+        } catch {
+          detalle = await r.text()
+        }
+        setModalBorrarCatalogoInventario((prev) => ({
+          ...prev,
+          error: `No se pudo eliminar el catálogo (${r.status}) ${detalle}`.trim(),
+        }))
+        return
+      }
+      cerrarModalBorrarCatalogoInventario()
+      if (String(catalogoActivoId) === String(id) || inventarioVerSeleccion === `catalog:${id}`) {
+        setCatalogoActivoId('')
+        setItemsCatalogoActivo([])
+        setInventarioVerSeleccion('')
+      }
+      invalidarCacheEndpointCatalogo(`/inventarios/catalogos/${id}/items`)
+      await cargarDatos()
+    } catch {
+      setModalBorrarCatalogoInventario((prev) => ({
+        ...prev,
+        error: 'Error de conexión al eliminar el catálogo',
+      }))
+    }
+  }
+
+  const cargarItemsCatalogoSeleccionado = async (catalogoId) => {
+    if (!catalogoId) {
+      setItemsCatalogoActivo([])
+      return
+    }
+    try {
+      const r = await fetch(`${API_URL}/inventarios/catalogos/${catalogoId}/items`, { headers: cabeceras() })
+      if (!r.ok) {
+        setItemsCatalogoActivo([])
+        return
+      }
+      const raw = await r.json()
+      setItemsCatalogoActivo(Array.isArray(raw) ? raw : [])
+    } catch {
+      setItemsCatalogoActivo([])
+    }
+  }
+
+  const crearItemCatalogoAdmin = async (e) => {
+    e.preventDefault()
+    if (!catalogoActivoId) {
+      setMensajeError('Selecciona un catálogo para agregar ítems')
+      return
+    }
+    setMensajeError('')
+    const catMeta = catalogosInventarioLista.find((c) => String(c.id) === String(catalogoActivoId))
+    const colsCat = parseColumnasCatalogoInventario(catMeta)
+    const datosExtra = {}
+    for (const col of colsCat) {
+      if (!esColumnaInventarioEstandar(col)) {
+        datosExtra[col] = (nuevoItemCatalogo.datosExtra && nuevoItemCatalogo.datosExtra[col]) || ''
+      }
+    }
+    const cuerpo = {
+      nombre: nuevoItemCatalogo.nombre,
+      serial: nuevoItemCatalogo.serial,
+      responsable: nuevoItemCatalogo.responsable,
+      ubicacion: nuevoItemCatalogo.ubicacion,
+      estado: nuevoItemCatalogo.estado,
+    }
+    if (Object.keys(datosExtra).length > 0) {
+      cuerpo.datosExtra = datosExtra
+    }
+    try {
+      const r = await fetch(`${API_URL}/inventarios/catalogos/${catalogoActivoId}/items`, {
+        method: 'POST',
+        headers: cabeceras(),
+        body: JSON.stringify(cuerpo),
+      })
+      if (!r.ok) {
+        let detalle = ''
+        try {
+          const j = await r.json()
+          detalle = j.mensaje || j.message || ''
+        } catch {
+          detalle = await r.text()
+        }
+        setMensajeError(`No se pudo crear el ítem (${r.status}) ${detalle}`.trim())
+        return
+      }
+      setNuevoItemCatalogo({ nombre: '', serial: '', responsable: '', ubicacion: '', estado: 'ACTIVO', datosExtra: {} })
+      invalidarCacheEndpointCatalogo(`/inventarios/catalogos/${catalogoActivoId}/items`)
+      await cargarItemsCatalogoSeleccionado(catalogoActivoId)
+      await cargarDatos()
+    } catch {
+      setMensajeError('Error de conexión al crear el ítem')
+    }
+  }
+
+  const eliminarItemCatalogoAdmin = async (itemId) => {
+    if (!window.confirm('¿Eliminar este ítem del catálogo?')) return
+    setMensajeError('')
+    try {
+      const r = await fetch(`${API_URL}/inventarios/catalogos/items/${itemId}`, { method: 'DELETE', headers: cabeceras() })
+      if (!r.ok) {
+        let detalle = ''
+        try {
+          const j = await r.json()
+          detalle = j.mensaje || ''
+        } catch {
+          detalle = await r.text()
+        }
+        setMensajeError(`No se pudo eliminar el ítem (${r.status}) ${detalle}`.trim())
+        return
+      }
+      if (catalogoActivoId) {
+        invalidarCacheEndpointCatalogo(`/inventarios/catalogos/${catalogoActivoId}/items`)
+        await cargarItemsCatalogoSeleccionado(catalogoActivoId)
+      }
+      await cargarDatos()
+    } catch {
+      setMensajeError('Error de conexión al eliminar el ítem')
+    }
   }
 
   const guardarFormulario = async (e) => {
@@ -306,11 +726,13 @@ function App() {
           c.tipo === 'select' && (c.origenOpciones || 'manual') === 'inventario'
             ? (c.catalogoInventario || 'HERRAMIENTAS')
             : undefined,
+        catalogoPersonalizadoId:
+          c.tipo === 'select' && (c.origenOpciones || 'manual') === 'inventario' && c.catalogoPersonalizadoId
+            ? String(c.catalogoPersonalizadoId)
+            : undefined,
         endpointOpciones:
           c.tipo === 'select' && (c.origenOpciones || 'manual') === 'inventario'
-            ? normalizarEndpointCatalogo(
-                c.endpointOpciones || ((c.catalogoInventario || 'HERRAMIENTAS') === 'PLANTAS' ? '/plantas' : '/inventario')
-              )
+            ? resolverEndpointInventarioCampo(c)
             : undefined,
         campoEtiquetaInventario:
           c.tipo === 'select' && (c.origenOpciones || 'manual') === 'inventario'
@@ -352,6 +774,7 @@ function App() {
       catalogoInventario: 'HERRAMIENTAS',
       endpointOpciones: '/inventario',
       inventarioIds: [],
+      catalogoPersonalizadoId: '',
       campoEtiquetaInventario: 'nombre',
       campoValorInventario: 'id',
     }])
@@ -586,9 +1009,21 @@ function App() {
 
   const eliminarPlanta = async (id) => {
     if (!window.confirm('¿Eliminar registro de planta?')) return
+    setMensajeError('')
     const r = await fetch(`${API_URL}/plantas/${id}`, { method: 'DELETE', headers: cabeceras() })
     if (!r.ok) {
-      setMensajeError(`No se pudo eliminar planta (${r.status})`)
+      let detalle = ''
+      try {
+        const j = await r.json()
+        detalle = j.message || j.mensaje || j.error || ''
+      } catch {
+        try {
+          detalle = await r.text()
+        } catch {
+          detalle = ''
+        }
+      }
+      setMensajeError(`No se pudo eliminar planta (${r.status}) ${detalle}`.trim())
       return
     }
     await cargarDatos()
@@ -596,9 +1031,21 @@ function App() {
 
   const eliminarEquipo = async (id) => {
     if (!window.confirm('¿Eliminar registro de herramienta/equipo?')) return
+    setMensajeError('')
     const r = await fetch(`${API_URL}/inventario/${id}`, { method: 'DELETE', headers: cabeceras() })
     if (!r.ok) {
-      setMensajeError(`No se pudo eliminar registro (${r.status})`)
+      let detalle = ''
+      try {
+        const j = await r.json()
+        detalle = j.message || j.mensaje || j.error || ''
+      } catch {
+        try {
+          detalle = await r.text()
+        } catch {
+          detalle = ''
+        }
+      }
+      setMensajeError(`No se pudo eliminar el registro (${r.status}) ${detalle}`.trim())
       return
     }
     await cargarDatos()
@@ -648,6 +1095,7 @@ function App() {
         catalogoInventario: 'HERRAMIENTAS',
         endpointOpciones: '/inventario',
         inventarioIds: [],
+        catalogoPersonalizadoId: '',
         campoEtiquetaInventario: 'nombre',
         campoValorInventario: 'id',
       },
@@ -667,6 +1115,7 @@ function App() {
   }
 
   const cargarFormularioParaEditar = (formulario) => {
+    setVistaFormulariosAdmin('crear')
     setFormularioEdicionId(formulario.id)
     setNuevoFormulario({ nombre: formulario.nombre || '' })
     let esquema = { campos: [] }
@@ -678,20 +1127,30 @@ function App() {
     const campos = Array.isArray(esquema.campos) ? esquema.campos : []
     setCamposFormularioNuevo(
       campos.length > 0
-        ? campos.map((c) => ({
-            nombre: c.nombre || '',
-            etiqueta: c.etiqueta || '',
-            tipo: c.tipo || 'string',
-            obligatorio: !!c.obligatorio,
-            opciones: Array.isArray(c.opciones) ? c.opciones.join(', ') : '',
-            origenOpciones: c.origenOpciones || 'manual',
-            multiple: !!c.multiple,
-            catalogoInventario: c.catalogoInventario || 'HERRAMIENTAS',
-            endpointOpciones: c.endpointOpciones || ((c.catalogoInventario || 'HERRAMIENTAS') === 'PLANTAS' ? '/plantas' : '/inventario'),
-            inventarioIds: Array.isArray(c.inventarioIds) ? c.inventarioIds.map((id) => String(id)) : [],
-            campoEtiquetaInventario: c.campoEtiquetaInventario || 'nombre',
-            campoValorInventario: c.campoValorInventario || 'id',
-          }))
+        ? campos.map((c) => {
+            const ep = c.endpointOpciones || ''
+            const m = /\/inventarios\/catalogos\/(\d+)\/items/i.exec(String(ep))
+            const esPersonalizado = c.catalogoInventario === 'PERSONALIZADO' || !!m
+            const idCustom = c.catalogoPersonalizadoId || (m ? m[1] : '')
+            return {
+              nombre: c.nombre || '',
+              etiqueta: c.etiqueta || '',
+              tipo: c.tipo || 'string',
+              obligatorio: !!c.obligatorio,
+              opciones: Array.isArray(c.opciones) ? c.opciones.join(', ') : '',
+              origenOpciones: c.origenOpciones || 'manual',
+              multiple: !!c.multiple,
+              catalogoInventario: esPersonalizado ? 'PERSONALIZADO' : (c.catalogoInventario || 'HERRAMIENTAS'),
+              endpointOpciones:
+                esPersonalizado && idCustom
+                  ? `/inventarios/catalogos/${idCustom}/items`
+                  : (c.endpointOpciones || ((c.catalogoInventario || 'HERRAMIENTAS') === 'PLANTAS' ? '/plantas' : '/inventario')),
+              inventarioIds: Array.isArray(c.inventarioIds) ? c.inventarioIds.map((id) => String(id)) : [],
+              catalogoPersonalizadoId: idCustom ? String(idCustom) : '',
+              campoEtiquetaInventario: c.campoEtiquetaInventario || 'nombre',
+              campoValorInventario: c.campoValorInventario || 'id',
+            }
+          })
         : [{
           nombre: '',
           etiqueta: '',
@@ -703,16 +1162,14 @@ function App() {
           catalogoInventario: 'HERRAMIENTAS',
           endpointOpciones: '/inventario',
           inventarioIds: [],
+          catalogoPersonalizadoId: '',
           campoEtiquetaInventario: 'nombre',
           campoValorInventario: 'id',
         }]
     )
   }
 
-  const obtenerEndpointCampo = (campo) => {
-    const porCatalogo = (campo?.catalogoInventario || 'HERRAMIENTAS') === 'PLANTAS' ? '/plantas' : '/inventario'
-    return normalizarEndpointCatalogo(campo?.endpointOpciones || porCatalogo)
-  }
+  const obtenerEndpointCampo = (campo) => resolverEndpointInventarioCampo(campo)
 
   const obtenerRegistrosCatalogo = (campo) => {
     const endpoint = obtenerEndpointCampo(campo)
@@ -742,7 +1199,12 @@ function App() {
   const obtenerOpcionesCampo = (campo) => {
     if (!campo || campo.tipo !== 'select') return []
     if ((campo.origenOpciones || 'manual') === 'inventario') {
-      const registrosCatalogo = obtenerRegistrosCatalogo(campo)
+      let registrosCatalogo = obtenerRegistrosCatalogo(campo)
+      const idsFiltrados = Array.isArray(campo.inventarioIds) ? campo.inventarioIds.map((x) => String(x)).filter(Boolean) : []
+      if (idsFiltrados.length > 0) {
+        const permitidos = new Set(idsFiltrados)
+        registrosCatalogo = registrosCatalogo.filter((item) => item?.id != null && permitidos.has(String(item.id)))
+      }
       const base = registrosCatalogo
       const campoEtiqueta = campo.campoEtiquetaInventario || 'nombre'
       const campoValor = campo.campoValorInventario || 'id'
@@ -1132,8 +1594,8 @@ function App() {
     if (moduloActivo === 'dashboard') {
       if (esTecnico || esSupervisor) {
         return (
-          <section className="panel-dashboard-tecnico">
-            <div className="tabs-sub-tecnico" style={{ marginBottom: '1rem' }}>
+          <section className="panel-dashboard-tecnico panel-flujos-usuario">
+            <div className="tabs-sub-tecnico">
               <button
                 type="button"
                 className={vistaSeccionFlujo === 'operativos' ? 'btn-tab-sub-tecnico activo' : 'btn-tab-sub-tecnico'}
@@ -1174,7 +1636,7 @@ function App() {
               </button>
             </div>
             {vistaPanelFlujo === 'disponibles' && (
-              <div className="grid-actividades-tecnico" style={{ marginTop: '1rem' }}>
+              <div className="grid-actividades-tecnico">
                 {plantillasMenuFlujo.length === 0 && <p>No hay flujos disponibles en esta sección.</p>}
                 {plantillasMenuFlujo.map((p) => (
                   <button
@@ -1191,12 +1653,12 @@ function App() {
             )}
 
             {vistaPanelFlujo === 'mis' && (
-              <div style={{ marginTop: '1rem' }}>
+              <div className="bloque-mis-actividades">
                 {actividadesFlujoActivas.length === 0 && actividadesFlujoSeguimiento.length === 0 && (
                   <p>No tienes actividades en esta sección.</p>
                 )}
                 {actividadesFlujoActivas.length > 0 && (
-                  <h4 className="titulo-seccion" style={{ marginBottom: '0.75rem' }}>
+                  <h4 className="titulo-seccion titulo-seccion--bloque">
                     En tu turno (puedes completar el paso)
                   </h4>
                 )}
@@ -1213,7 +1675,7 @@ function App() {
                     }
                   }
                   return (
-                    <div key={t.id} className="tarjeta-formulario" style={{ marginBottom: '1rem' }}>
+                    <div key={t.id} className="tarjeta-formulario tarjeta-formulario--espaciada">
                       <div className="roles-grid">
                         <strong>{t.titulo}</strong>
                         <button type="button" className="btn-secundario" onClick={() => toggleExpandirActividadFlujo(exp ? '' : t.id)}>
@@ -1227,7 +1689,7 @@ function App() {
                       )}
                       {exp && paso && (
                         <>
-                          <h4 style={{ marginTop: '0.75rem' }}>{paso.formulario?.nombre || 'Formulario'}</h4>
+                          <h4 className="subtitulo-paso-formulario">{paso.formulario?.nombre || 'Formulario'}</h4>
                           {campos.length === 0 && <p>Sin campos en el formulario.</p>}
                           {campos.map((c, idx) => (
                             <div key={`${c.nombre}-${idx}`} className="formulario">
@@ -1299,7 +1761,7 @@ function App() {
                               Firma con el dedo (táctil) o con el mouse (PC). Este campo siempre es obligatorio.
                             </small>
                           </div>
-                          <button type="button" style={{ marginTop: '0.5rem' }} onClick={() => enviarPasoFlujo(t.id, paso.id)}>
+                          <button type="button" className="btn-completar-paso-flujo" onClick={() => enviarPasoFlujo(t.id, paso.id)}>
                             Completar paso y continuar
                           </button>
                         </>
@@ -1309,7 +1771,7 @@ function App() {
                 })}
                 {actividadesFlujoSeguimiento.length > 0 && (
                   <>
-                    <h4 className="titulo-seccion" style={{ margin: '1.25rem 0 0.75rem' }}>
+                    <h4 className="titulo-seccion titulo-seccion--separado">
                       Seguimiento (solo consulta; no es tu turno)
                     </h4>
                     {actividadesFlujoSeguimiento.map((t) => {
@@ -1317,7 +1779,7 @@ function App() {
                       const pasoActual = etapas.find((e) => !e.completada)
                       const exp = String(actividadFlujoExpandidaId) === String(t.id)
                       return (
-                        <div key={`seg-${t.id}`} className="tarjeta-formulario" style={{ marginBottom: '1rem', opacity: 0.95 }}>
+                        <div key={`seg-${t.id}`} className="tarjeta-formulario tarjeta-formulario--seguimiento">
                           <div className="roles-grid">
                             <strong>{t.titulo}</strong>
                             <button type="button" className="btn-secundario" onClick={() => toggleExpandirActividadFlujo(exp ? '' : t.id)}>
@@ -1330,17 +1792,17 @@ function App() {
                             </small>
                           )}
                           {exp && (
-                            <ul style={{ marginTop: '0.75rem', paddingLeft: '1.25rem' }}>
+                            <ul className="lista-etapas-flujo">
                               {etapas.map((e) => (
-                                <li key={e.id} style={{ marginBottom: '0.35rem' }}>
+                                <li key={e.id}>
                                   {e.completada ? (
                                     <>
-                                      <span style={{ color: '#15803d' }}>✓</span> {e.nombre}
+                                      <span className="etapa-marca etapa-marca--ok">✓</span> {e.nombre}
                                       {e.completadaPor?.nombreCompleto ? ` · ${e.completadaPor.nombreCompleto}` : ''}
                                     </>
                                   ) : (
                                     <>
-                                      <span style={{ color: '#ca8a04' }}>○</span> {e.nombre} · pendiente · responsable {e.rolResponsable}
+                                      <span className="etapa-marca etapa-marca--pendiente">○</span> {e.nombre} · pendiente · responsable {e.rolResponsable}
                                       {pasoActual?.id === e.id ? ' (turno actual)' : ''}
                                     </>
                                   )}
@@ -1357,7 +1819,7 @@ function App() {
             )}
 
             {vistaPanelFlujo === 'historial' && (
-              <div style={{ marginTop: '1rem' }}>
+              <div className="bloque-historial-actividades">
                 <TablaSimple
                   columnas={['Ref.', 'Actividad', 'Estado']}
                   filas={actividadesFlujoHistorial.map((t) => [t.id, t.titulo, renderEstadoTarea(t.estado)])}
@@ -1374,11 +1836,15 @@ function App() {
         const finalizadasAdmin = tareasCampo.filter((t) => t.estado === 'TERMINADA' || t.estado === 'CANCELADA')
         return (
           <section>
-            <div className="tarjetas-grid">
+            <div className="tarjetas-grid tarjetas-kpi">
               {resumen.map((item) => (
-                <article key={item.titulo} className="tarjeta">
+                <article
+                  key={item.titulo}
+                  className="tarjeta tarjeta-kpi"
+                  data-kpi={item.titulo === 'Flujos' ? 'flujos' : 'formularios'}
+                >
                   <h3>{item.titulo}</h3>
-                  <p>{item.valor}</p>
+                  <p className="tarjeta-kpi-valor">{item.valor}</p>
                 </article>
               ))}
             </div>
@@ -1388,14 +1854,16 @@ function App() {
                 className={vistaDashboardAdmin === 'pendientes' ? 'btn-tab-admin activo' : 'btn-tab-admin'}
                 onClick={() => setVistaDashboardAdmin('pendientes')}
               >
-                📌 Registro de tareas pendientes <span className="badge-tab">{pendientesAdmin.length}</span>
+                <span className="tab-leading-dot tab-dot-amber" aria-hidden="true" />
+                Registro de tareas pendientes <span className="badge-tab">{pendientesAdmin.length}</span>
               </button>
               <button
                 type="button"
                 className={vistaDashboardAdmin === 'finalizadas' ? 'btn-tab-admin activo' : 'btn-tab-admin'}
                 onClick={() => setVistaDashboardAdmin('finalizadas')}
               >
-                ✅ Registro de tareas finalizadas/canceladas <span className="badge-tab">{finalizadasAdmin.length}</span>
+                <span className="tab-leading-dot tab-dot-emerald" aria-hidden="true" />
+                Registro de tareas finalizadas/canceladas <span className="badge-tab">{finalizadasAdmin.length}</span>
               </button>
             </div>
 
@@ -1475,11 +1943,15 @@ function App() {
         )
       }
       return (
-        <div className="tarjetas-grid">
+        <div className="tarjetas-grid tarjetas-kpi">
           {resumen.map((item) => (
-            <article key={item.titulo} className="tarjeta">
+            <article
+              key={item.titulo}
+              className="tarjeta tarjeta-kpi"
+              data-kpi={item.titulo === 'Flujos' ? 'flujos' : 'formularios'}
+            >
               <h3>{item.titulo}</h3>
-              <p>{item.valor}</p>
+              <p className="tarjeta-kpi-valor">{item.valor}</p>
             </article>
           ))}
         </div>
@@ -1491,8 +1963,8 @@ function App() {
         return <p>Solo administración puede diseñar y publicar flujos.</p>
       }
       return (
-        <section>
-          <div className="panel-seccion-header">
+        <section className="modulo-flujos-admin">
+          <div className="panel-seccion-header flujo-admin-cabecera">
             <h3>Flujos de actividades</h3>
             <span>Diseña procesos por pasos, roles y formularios. Nada se publica hasta que lo confirmes.</span>
           </div>
@@ -1521,9 +1993,12 @@ function App() {
           </div>
 
           {vistaAdminFlujos === 'diseno' && (
-            <div className="tarjeta-formulario">
-              <h4>Nueva plantilla (borrador)</h4>
-              <form className="formulario" onSubmit={crearPlantillaFlujoSubmit}>
+            <div className="tarjeta-formulario flujo-formulario-nuevo">
+              <div className="flujo-seccion-titulo">
+                <h4>Nueva plantilla (borrador)</h4>
+                <span className="flujo-seccion-sub">Define el flujo y los pasos antes de publicar.</span>
+              </div>
+              <form className="formulario flujo-form-grid" onSubmit={crearPlantillaFlujoSubmit}>
                 <input
                   placeholder="Nombre del flujo"
                   value={nuevaPlantillaFlujo.titulo}
@@ -1582,8 +2057,8 @@ function App() {
                   Debe existir al menos un paso con el rol elegido arriba (ese quedará primero). El resto sigue el orden de esta lista.
                 </p>
                 {pasosPlantillaFlujo.map((paso, idx) => (
-                  <div key={idx} className="formulario" style={{ borderLeft: '3px solid #3b82f6', paddingLeft: '0.75rem' }}>
-                    <strong style={{ display: 'block', marginBottom: '0.35rem' }}>Paso {idx + 1}</strong>
+                  <div key={idx} className="formulario flujo-paso-bloque">
+                    <strong className="flujo-paso-numero">Paso {idx + 1}</strong>
                     <input
                       placeholder="Nombre del paso"
                       value={paso.nombre}
@@ -1631,7 +2106,7 @@ function App() {
           )}
 
           {vistaAdminFlujos === 'borradores' && (
-            <div className="tarjeta-formulario">
+            <div className="tarjeta-formulario flujo-tabla-carta">
               <h4>Borradores</h4>
               <TablaSimple
                 columnas={['Id', 'Título', 'Tipo', 'Sección', 'Acciones']}
@@ -1650,7 +2125,7 @@ function App() {
           )}
 
           {vistaAdminFlujos === 'publicadas' && (
-            <div className="tarjeta-formulario">
+            <div className="tarjeta-formulario flujo-tabla-carta">
               <h4>Plantillas publicadas</h4>
               <TablaSimple
                 columnas={['Id', 'Título', 'Tipo', 'Menú', 'Inicio rol', 'Sección', 'Acciones']}
@@ -1676,74 +2151,421 @@ function App() {
       if (esTecnico) {
         return <p>No tienes acceso a inventario.</p>
       }
-      return (
-        <section>
-          <div className="tabs-dashboard-admin">
-            <button
-              type="button"
-              className={vistaInventario === 'plantas' ? 'btn-tab-admin activo' : 'btn-tab-admin'}
-              onClick={() => setVistaInventario('plantas')}
-            >
-              🏭 Plantas <span className="badge-tab">{plantas.length}</span>
-            </button>
-            <button
-              type="button"
-              className={vistaInventario === 'herramientas' ? 'btn-tab-admin activo' : 'btn-tab-admin'}
-              onClick={() => setVistaInventario('herramientas')}
-            >
-              🧰 Herramientas <span className="badge-tab">{inventario.length}</span>
-            </button>
-          </div>
+      const etiquetasColumnaInventario = {
+        nombre: 'Nombre',
+        serial: 'Serial',
+        responsable: 'Responsable',
+        estado: 'Estado',
+        ubicacion: 'Ubicación',
+      }
+      const volverMenuInventario = () => {
+        setVistaInventario('menu')
+        setInventarioVerSeleccion('')
+        setCatalogoActivoId('')
+        setItemsCatalogoActivo([])
+      }
+      const idCatalogoVer = inventarioVerSeleccion.startsWith('catalog:') ? inventarioVerSeleccion.replace('catalog:', '') : ''
+      const catalogoSeleccionadoMeta = catalogosInventarioLista.find((c) => String(c.id) === String(idCatalogoVer)) || null
+      const colsInventarioCustom = parseColumnasCatalogoInventario(catalogoSeleccionadoMeta)
 
-          {vistaInventario === 'plantas' && (
-            <div className="tarjeta-formulario">
-              <div className="panel-seccion-header">
-                <h3>Plantas</h3>
-                <span>{plantas.length} registradas</span>
+      return (
+        <section className="modulo-inventario">
+          {vistaInventario === 'menu' && (
+            <div className="inventario-menu-inicio">
+              <h2 className="inventario-menu-titulo">Inventario</h2>
+              <p className="texto-ayuda-tecnico inventario-menu-sub">Elige qué deseas hacer.</p>
+              <div className="inventario-menu-grid">
+                <button type="button" className="inventario-menu-tarjeta" onClick={() => setVistaInventario('ver')}>
+                  <span className="inventario-menu-tarjeta-titulo">Ver inventarios</span>
+                  <span className="inventario-menu-tarjeta-texto">
+                    Consulta plantas, herramientas y los inventarios que hayas creado. Selecciona cuál ver y administra su contenido.
+                  </span>
+                </button>
+                <button type="button" className="inventario-menu-tarjeta" onClick={() => setVistaInventario('crear')}>
+                  <span className="inventario-menu-tarjeta-titulo">Crear inventario</span>
+                  <span className="inventario-menu-tarjeta-texto">
+                    Define un nuevo listado con nombre y las columnas que tendrá la tabla. Luego podrás cargar datos desde «Ver inventarios».
+                  </span>
+                </button>
               </div>
-              <form className="formulario" onSubmit={guardarPlanta}>
-                <input placeholder="Nombre de planta" value={nuevaPlanta.nombre} onChange={(e) => setNuevaPlanta({ ...nuevaPlanta, nombre: e.target.value })} required />
-                <input placeholder="Serial" value={nuevaPlanta.serial} onChange={(e) => setNuevaPlanta({ ...nuevaPlanta, serial: e.target.value })} required />
-                <input placeholder="Ubicación" value={nuevaPlanta.ubicacion} onChange={(e) => setNuevaPlanta({ ...nuevaPlanta, ubicacion: e.target.value })} />
-                <button type="submit">Guardar planta</button>
-              </form>
-              <TablaSimple
-                columnas={['Nombre', 'Serial', 'Ubicación', 'Estado', 'Acciones']}
-                filas={plantas.map((p) => [
-                  p.nombre,
-                  p.serial,
-                  p.ubicacion,
-                  p.estado,
-                  esAdmin ? <button key={`del-pl-${p.id}`} type="button" className="btn-peligro" onClick={() => eliminarPlanta(p.id)}>Eliminar</button> : '-',
-                ])}
-              />
             </div>
           )}
 
-          {vistaInventario === 'herramientas' && (
-            <div className="tarjeta-formulario">
-              <div className="panel-seccion-header">
-                <h3>Herramientas</h3>
-                <span>{inventario.length} registradas</span>
+          {vistaInventario === 'ver' && (
+            <div className="tarjeta-formulario inventario-panel-ver inventario-panel-tarjeta">
+              <div className="panel-seccion-header inventario-panel-cabecera">
+                <div className="inventario-panel-intro">
+                  <button type="button" className="btn-secundario inventario-boton-volver" onClick={volverMenuInventario}>
+                    ← Volver
+                  </button>
+                  <h3 className="inventario-panel-h3">Ver inventarios</h3>
+                  <span className="inventario-panel-subtitulo">
+                    Elige un listado, consulta datos y agrega o elimina registros según tu rol.
+                  </span>
+                </div>
               </div>
-              <form className="formulario" onSubmit={guardarEquipo}>
-                <input placeholder="Nombre de herramienta/equipo" value={nuevoEquipo.nombre} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, nombre: e.target.value })} required />
-                <input placeholder="Serial" value={nuevoEquipo.serial} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, serial: e.target.value })} required />
-                <input placeholder="Responsable" value={nuevoEquipo.responsable} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, responsable: e.target.value })} />
-                <input placeholder="Ubicación" value={nuevoEquipo.ubicacion} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, ubicacion: e.target.value })} />
-                <button type="submit">Guardar herramienta</button>
+              <div className="inventario-bloque-selector">
+                <label className="inventario-etiqueta-selector" htmlFor="sel-inventario-ver">
+                  Inventario a visualizar
+                </label>
+                <select
+                  id="sel-inventario-ver"
+                  className="inventario-select-principal"
+                  value={inventarioVerSeleccion}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setInventarioVerSeleccion(v)
+                    setNuevoItemCatalogo({
+                      nombre: '',
+                      serial: '',
+                      responsable: '',
+                      ubicacion: '',
+                      estado: 'ACTIVO',
+                      datosExtra: {},
+                    })
+                    if (v.startsWith('catalog:')) {
+                      const id = v.replace('catalog:', '')
+                      setCatalogoActivoId(id)
+                      void cargarItemsCatalogoSeleccionado(id)
+                    } else {
+                      setCatalogoActivoId('')
+                      setItemsCatalogoActivo([])
+                    }
+                  }}
+                >
+                  <option value="">— Elige un inventario —</option>
+                  <option value="preset:plantas">Plantas (eléctricas)</option>
+                  <option value="preset:herramientas">Herramientas / equipos</option>
+                  {catalogosInventarioLista.map((c) => (
+                    <option key={c.id} value={`catalog:${c.id}`}>
+                      {c.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {inventarioVerSeleccion === 'preset:plantas' && (
+                <div className="inventario-detalle-bloque">
+                  <div className="panel-seccion-header">
+                    <h4>Plantas</h4>
+                    <span>{plantas.length} registradas</span>
+                  </div>
+                  <form className="formulario" onSubmit={guardarPlanta}>
+                    <input placeholder="Nombre de planta" value={nuevaPlanta.nombre} onChange={(e) => setNuevaPlanta({ ...nuevaPlanta, nombre: e.target.value })} required />
+                    <input placeholder="Serial" value={nuevaPlanta.serial} onChange={(e) => setNuevaPlanta({ ...nuevaPlanta, serial: e.target.value })} required />
+                    <input placeholder="Ubicación" value={nuevaPlanta.ubicacion} onChange={(e) => setNuevaPlanta({ ...nuevaPlanta, ubicacion: e.target.value })} />
+                    <button type="submit">Guardar planta</button>
+                  </form>
+                  <TablaSimple
+                    columnas={['Nombre', 'Serial', 'Ubicación', 'Estado', 'Acciones']}
+                    filas={plantas.map((p) => [
+                      p.nombre,
+                      p.serial,
+                      p.ubicacion,
+                      p.estado,
+                      esAdmin ? <button key={`del-pl-${p.id}`} type="button" className="btn-peligro" onClick={() => eliminarPlanta(p.id)}>Eliminar</button> : '-',
+                    ])}
+                  />
+                </div>
+              )}
+
+              {inventarioVerSeleccion === 'preset:herramientas' && (
+                <div className="inventario-detalle-bloque">
+                  <div className="panel-seccion-header">
+                    <h4>Herramientas</h4>
+                    <span>{inventario.length} registradas</span>
+                  </div>
+                  <form className="formulario" onSubmit={guardarEquipo}>
+                    <input placeholder="Nombre de herramienta/equipo" value={nuevoEquipo.nombre} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, nombre: e.target.value })} required />
+                    <input placeholder="Serial" value={nuevoEquipo.serial} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, serial: e.target.value })} required />
+                    <input placeholder="Responsable" value={nuevoEquipo.responsable} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, responsable: e.target.value })} />
+                    <input placeholder="Ubicación" value={nuevoEquipo.ubicacion} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, ubicacion: e.target.value })} />
+                    <button type="submit">Guardar herramienta</button>
+                  </form>
+                  <TablaSimple
+                    columnas={['Nombre', 'Serial', 'Responsable', 'Estado', 'Ubicación', 'Acciones']}
+                    filas={inventario.map((i) => [
+                      i.nombre,
+                      i.serial,
+                      i.responsable,
+                      i.estado,
+                      i.ubicacion,
+                      esAdmin ? <button key={`del-inv-${i.id}`} type="button" className="btn-peligro" onClick={() => eliminarEquipo(i.id)}>Eliminar</button> : '-',
+                    ])}
+                  />
+                </div>
+              )}
+
+              {inventarioVerSeleccion.startsWith('catalog:') && catalogoActivoId && (
+                <div className="inventario-detalle-bloque">
+                  <div className="panel-seccion-header">
+                    <div>
+                      <h4>{catalogoSeleccionadoMeta?.nombre || 'Inventario personalizado'}</h4>
+                      <span>{itemsCatalogoActivo.length} ítems</span>
+                    </div>
+                    {esAdmin && catalogoSeleccionadoMeta?.id != null && (
+                      <button
+                        type="button"
+                        className="btn-peligro"
+                        onClick={() => abrirModalBorrarCatalogoInventario(catalogoSeleccionadoMeta.id)}
+                      >
+                        Eliminar inventario completo
+                      </button>
+                    )}
+                  </div>
+                  {!catalogoSeleccionadoMeta && (
+                    <p className="texto-error">No se encontró este inventario. Vuelve a cargar datos o elige otro.</p>
+                  )}
+                  {catalogoSeleccionadoMeta && (
+                    <>
+                      <p className="inventario-seccion-titulo inventario-seccion-titulo-alta">Agregar ítem</p>
+                      <form className="formulario inventario-form-alta" onSubmit={crearItemCatalogoAdmin}>
+                        {colsInventarioCustom.includes('nombre') && (
+                          <input
+                            placeholder="Nombre"
+                            value={nuevoItemCatalogo.nombre}
+                            onChange={(e) => setNuevoItemCatalogo({ ...nuevoItemCatalogo, nombre: e.target.value })}
+                            required
+                          />
+                        )}
+                        {colsInventarioCustom.includes('serial') && (
+                          <input
+                            placeholder="Serial (único en este inventario)"
+                            value={nuevoItemCatalogo.serial}
+                            onChange={(e) => setNuevoItemCatalogo({ ...nuevoItemCatalogo, serial: e.target.value })}
+                          />
+                        )}
+                        {colsInventarioCustom.includes('responsable') && (
+                          <input
+                            placeholder="Responsable"
+                            value={nuevoItemCatalogo.responsable}
+                            onChange={(e) => setNuevoItemCatalogo({ ...nuevoItemCatalogo, responsable: e.target.value })}
+                          />
+                        )}
+                        {colsInventarioCustom.includes('ubicacion') && (
+                          <input
+                            placeholder="Ubicación"
+                            value={nuevoItemCatalogo.ubicacion}
+                            onChange={(e) => setNuevoItemCatalogo({ ...nuevoItemCatalogo, ubicacion: e.target.value })}
+                          />
+                        )}
+                        {colsInventarioCustom.includes('estado') && (
+                          <select
+                            value={nuevoItemCatalogo.estado}
+                            onChange={(e) => setNuevoItemCatalogo({ ...nuevoItemCatalogo, estado: e.target.value })}
+                          >
+                            <option value="ACTIVO">ACTIVO</option>
+                            <option value="EN_MANTENIMIENTO">EN_MANTENIMIENTO</option>
+                            <option value="INACTIVO">INACTIVO</option>
+                            <option value="DADO_DE_BAJA">DADO_DE_BAJA</option>
+                          </select>
+                        )}
+                        {colsInventarioCustom
+                          .filter((col) => !esColumnaInventarioEstandar(col))
+                          .map((col) => (
+                            <input
+                              key={col}
+                              placeholder={col}
+                              value={(nuevoItemCatalogo.datosExtra && nuevoItemCatalogo.datosExtra[col]) || ''}
+                              onChange={(e) =>
+                                setNuevoItemCatalogo({
+                                  ...nuevoItemCatalogo,
+                                  datosExtra: { ...nuevoItemCatalogo.datosExtra, [col]: e.target.value },
+                                })
+                              }
+                            />
+                          ))}
+                        <button type="submit">Agregar ítem</button>
+                      </form>
+                      <TablaSimple
+                        columnas={[
+                          'Id',
+                          ...colsInventarioCustom.map((k) => etiquetasColumnaInventario[k] || k),
+                          'Acciones',
+                        ]}
+                        filas={itemsCatalogoActivo.map((it) => [
+                          it.id,
+                          ...colsInventarioCustom.map((k) =>
+                            esColumnaInventarioEstandar(k) ? it[k] ?? '' : (it.datosExtra && it.datosExtra[k]) ?? '',
+                          ),
+                          esAdmin ? (
+                            <button key={`del-it-${it.id}`} type="button" className="btn-peligro" onClick={() => eliminarItemCatalogoAdmin(it.id)}>
+                              Eliminar
+                            </button>
+                          ) : (
+                            '-'
+                          ),
+                        ])}
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {vistaInventario === 'crear' && (
+            <div className="tarjeta-formulario inventario-panel-crear inventario-panel-tarjeta">
+              <div className="panel-seccion-header inventario-panel-cabecera">
+                <div className="inventario-panel-intro">
+                  <button type="button" className="btn-secundario inventario-boton-volver" onClick={volverMenuInventario}>
+                    ← Volver
+                  </button>
+                  <h3 className="inventario-panel-h3">Crear inventario</h3>
+                </div>
+              </div>
+              <form className="formulario inventario-form-crear" onSubmit={crearCatalogoInventarioAdmin}>
+                <div className="inventario-campo-bloque">
+                  <label className="inventario-etiqueta-campo" htmlFor="inv-crear-nombre">
+                    Nombre del inventario
+                  </label>
+                  <input
+                    id="inv-crear-nombre"
+                    placeholder="Ej. Computadores, vehículos de obra…"
+                    value={nuevoInventarioNombre}
+                    onChange={(e) => setNuevoInventarioNombre(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="inventario-seccion-columnas">
+                  <p className="inventario-seccion-titulo">Columnas además del nombre</p>
+                <div className="roles-grid inventario-columnas-checks">
+                  <label className="rol-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={columnasNuevoInventario.serial}
+                      onChange={(e) => setColumnasNuevoInventario({ ...columnasNuevoInventario, serial: e.target.checked })}
+                    />
+                    Serial
+                  </label>
+                  <label className="rol-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={columnasNuevoInventario.responsable}
+                      onChange={(e) => setColumnasNuevoInventario({ ...columnasNuevoInventario, responsable: e.target.checked })}
+                    />
+                    Responsable
+                  </label>
+                  <label className="rol-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={columnasNuevoInventario.ubicacion}
+                      onChange={(e) => setColumnasNuevoInventario({ ...columnasNuevoInventario, ubicacion: e.target.checked })}
+                    />
+                    Ubicación
+                  </label>
+                  <label className="rol-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={columnasNuevoInventario.estado}
+                      onChange={(e) => setColumnasNuevoInventario({ ...columnasNuevoInventario, estado: e.target.checked })}
+                    />
+                    Estado
+                  </label>
+                </div>
+                </div>
+                <div className="inventario-seccion-columnas inventario-seccion-columnas-custom">
+                  <p className="inventario-seccion-titulo">Columnas personalizadas (opcional)</p>
+                <div className="inventario-columnas-custom-list">
+                  {columnasPersonalizadasNuevoInventario.map((row) => (
+                    <div key={row.id} className="inventario-columna-custom-fila">
+                      <input
+                        type="text"
+                        placeholder="Nombre de la columna (ej. Marca, Proveedor)"
+                        value={row.nombre}
+                        onChange={(e) =>
+                          setColumnasPersonalizadasNuevoInventario((prev) =>
+                            prev.map((r) => (r.id === row.id ? { ...r, nombre: e.target.value } : r)),
+                          )
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="btn-secundario inventario-quitar-columna-custom"
+                        onClick={() =>
+                          setColumnasPersonalizadasNuevoInventario((prev) => prev.filter((r) => r.id !== row.id))
+                        }
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn-secundario inventario-anadir-columna-custom"
+                    onClick={() =>
+                      setColumnasPersonalizadasNuevoInventario((prev) => [...prev, nuevaFilaColumnaPersonalizadaInventario()])
+                    }
+                  >
+                    + Añadir columna personalizada
+                  </button>
+                </div>
+                </div>
+                <div className="inventario-accion-principal">
+                  <button type="submit">Crear inventario</button>
+                </div>
               </form>
-              <TablaSimple
-                columnas={['Nombre', 'Serial', 'Responsable', 'Estado', 'Ubicación', 'Acciones']}
-                filas={inventario.map((i) => [
-                  i.nombre,
-                  i.serial,
-                  i.responsable,
-                  i.estado,
-                  i.ubicacion,
-                  esAdmin ? <button key={`del-inv-${i.id}`} type="button" className="btn-peligro" onClick={() => eliminarEquipo(i.id)}>Eliminar</button> : '-',
-                ])}
-              />
+            </div>
+          )}
+
+          {modalBorrarCatalogoInventario.abierto && (
+            <div
+              className="modal-confirmacion-inventario-fondo"
+              role="presentation"
+              onClick={cerrarModalBorrarCatalogoInventario}
+            >
+              <div
+                className="modal-confirmacion-inventario-caja"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="modal-borrar-catalogo-titulo"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h4 id="modal-borrar-catalogo-titulo" className="modal-confirmacion-inventario-titulo">
+                  Confirmar eliminación del inventario
+                </h4>
+                <p className="texto-ayuda-tecnico modal-confirmacion-inventario-texto">
+                  Esta acción elimina el catálogo y todos sus datos asociados. Es irreversible. Escribe tu contraseña de
+                  sesión para continuar.
+                </p>
+                <label className="modal-confirmacion-inventario-label-clave" htmlFor="modal-borrar-catalogo-clave">
+                  Contraseña
+                </label>
+                <input
+                  id="modal-borrar-catalogo-clave"
+                  type="password"
+                  className="modal-confirmacion-inventario-clave"
+                  placeholder="Tu contraseña de acceso"
+                  autoComplete="current-password"
+                  value={modalBorrarCatalogoInventario.clave}
+                  onChange={(e) =>
+                    setModalBorrarCatalogoInventario((prev) => ({
+                      ...prev,
+                      clave: e.target.value,
+                      error: '',
+                    }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void ejecutarBorradoCatalogoInventarioConfirmado()
+                    }
+                  }}
+                />
+                {modalBorrarCatalogoInventario.error ? (
+                  <p className="texto-error modal-confirmacion-inventario-error" role="alert">
+                    {modalBorrarCatalogoInventario.error}
+                  </p>
+                ) : null}
+                <div className="modal-confirmacion-inventario-acciones">
+                  <button type="button" className="btn-secundario" onClick={cerrarModalBorrarCatalogoInventario}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="btn-peligro" onClick={() => void ejecutarBorradoCatalogoInventarioConfirmado()}>
+                    Eliminar definitivamente
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </section>
@@ -1770,7 +2592,13 @@ function App() {
                 className={vistaFormulariosAdmin === 'ver' ? 'btn-tab-admin activo' : 'btn-tab-admin'}
                 onClick={() => setVistaFormulariosAdmin('ver')}
               >
-                📋 Ver formularios creados <span className="badge-tab">{formularios.length}</span>
+                <span className="tab-leading-icon-inv" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" />
+                    <path d="M14 2v6h6" />
+                  </svg>
+                </span>
+                Ver formularios creados <span className="badge-tab">{formularios.length}</span>
               </button>
             </div>
           )}
@@ -1827,20 +2655,48 @@ function App() {
                       {(campo.origenOpciones || 'manual') === 'inventario' && (
                         <>
                           <select
-                            value={campo.catalogoInventario || 'HERRAMIENTAS'}
-                            onChange={(e) =>
-                              actualizarCampoFormulario(idx, {
-                                catalogoInventario: e.target.value,
-                                endpointOpciones: e.target.value === 'PLANTAS' ? '/plantas' : '/inventario',
-                                inventarioIds: [],
-                              })
+                            value={
+                              campo.catalogoInventario === 'PERSONALIZADO' && campo.catalogoPersonalizadoId
+                                ? `custom:${campo.catalogoPersonalizadoId}`
+                                : campo.catalogoInventario || 'HERRAMIENTAS'
                             }
+                            onChange={(e) => {
+                              const v = e.target.value
+                              if (v === 'PLANTAS') {
+                                actualizarCampoFormulario(idx, {
+                                  catalogoInventario: 'PLANTAS',
+                                  endpointOpciones: '/plantas',
+                                  catalogoPersonalizadoId: '',
+                                  inventarioIds: [],
+                                })
+                              } else if (v === 'HERRAMIENTAS') {
+                                actualizarCampoFormulario(idx, {
+                                  catalogoInventario: 'HERRAMIENTAS',
+                                  endpointOpciones: '/inventario',
+                                  catalogoPersonalizadoId: '',
+                                  inventarioIds: [],
+                                })
+                              } else if (v.startsWith('custom:')) {
+                                const id = v.slice(7)
+                                actualizarCampoFormulario(idx, {
+                                  catalogoInventario: 'PERSONALIZADO',
+                                  catalogoPersonalizadoId: id,
+                                  endpointOpciones: `/inventarios/catalogos/${id}/items`,
+                                  inventarioIds: [],
+                                })
+                              }
+                            }}
                           >
-                            <option value="PLANTAS">Inventario: PLANTAS</option>
-                            <option value="HERRAMIENTAS">Inventario: HERRAMIENTAS</option>
+                            <option value="PLANTAS">Plantas (eléctricas)</option>
+                            <option value="HERRAMIENTAS">Herramientas / equipos</option>
+                            {catalogosInventarioLista.map((cat) => (
+                              <option key={cat.id} value={`custom:${cat.id}`}>
+                                Catálogo: {cat.nombre}
+                              </option>
+                            ))}
                           </select>
                           <input
-                            placeholder="Endpoint catálogo (ej: /inventario, /plantas, /mi-catalogo)"
+                            placeholder="Endpoint API (se rellena al elegir catálogo; avanzado: /inventarios/catalogos/ID/items)"
                             value={campo.endpointOpciones || ''}
                             onChange={(e) => actualizarCampoFormulario(idx, { endpointOpciones: e.target.value })}
                           />
@@ -1885,26 +2741,32 @@ function App() {
           )}
 
           {vistaFormulariosAdmin === 'ver' && (
-            <div className="tarjeta-formulario">
-              <h3>Formularios creados</h3>
+            <div className="tarjeta-formulario formularios-lista-creados">
+              <div className="panel-seccion-header formularios-lista-creados-cabecera">
+                <h3>Formularios creados</h3>
+              </div>
               <TablaSimple
                 columnas={['Id', 'Nombre', 'Acciones']}
                 filas={formularios.map((f) => [
                   f.id,
                   f.nombre,
-                  `Abrir / Editar`,
+                  <div key={`acc-form-${f.id}`} className="formularios-tabla-acciones">
+                    <button type="button" className="btn-secundario" onClick={() => abrirFormulario(f.id)}>
+                      Abrir
+                    </button>
+                    {esAdmin && (
+                      <button type="button" className="btn-secundario" onClick={() => cargarFormularioParaEditar(f)}>
+                        Editar
+                      </button>
+                    )}
+                    {esAdmin && (
+                      <button type="button" className="btn-peligro" onClick={() => eliminarFormulario(f.id)}>
+                        Eliminar
+                      </button>
+                    )}
+                  </div>,
                 ])}
               />
-              <div className="roles-grid">
-                {formularios.map((f) => (
-                  <div key={f.id} className="rol-checkbox">
-                    <strong>{f.nombre}</strong>
-                    <button type="button" onClick={() => abrirFormulario(f.id)}>Abrir</button>
-                    {esAdmin && <button type="button" onClick={() => cargarFormularioParaEditar(f)}>Editar</button>}
-                    {esAdmin && <button type="button" className="btn-peligro" onClick={() => eliminarFormulario(f.id)}>Eliminar</button>}
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
@@ -2095,14 +2957,25 @@ function App() {
             className={moduloActivo === 'dashboard' ? 'sidebar-btn activo' : 'sidebar-btn'}
             onClick={() => irAModulo('dashboard')}
           >
-            🧭 Dashboard
+            <span className="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z" />
+              </svg>
+            </span>
+            Dashboard
           </button>
           {!esTecnico && (
             <button
               className={moduloActivo === 'inventario' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('inventario')}
             >
-              🏭 Inventario
+              <span className="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19V9l8-4 8 4v10" />
+                  <path d="M9 22V12h6v10" />
+                </svg>
+              </span>
+              Inventario
             </button>
           )}
           {!esTecnico && (
@@ -2110,7 +2983,14 @@ function App() {
               className={moduloActivo === 'formularios' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('formularios')}
             >
-              📋 Formularios
+              <span className="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" />
+                  <path d="M14 2v6h6" />
+                  <path d="M8 13h8M8 17h8M8 9h4" />
+                </svg>
+              </span>
+              Formularios
             </button>
           )}
           {esAdmin && (
@@ -2118,7 +2998,15 @@ function App() {
               className={moduloActivo === 'flujos' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('flujos')}
             >
-              🔁 Flujos
+              <span className="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="6" height="6" rx="1.5" />
+                  <rect x="15" y="4" width="6" height="6" rx="1.5" />
+                  <rect x="9" y="14" width="6" height="6" rx="1.5" />
+                  <path d="M6 10v2h12V10M12 10v4" />
+                </svg>
+              </span>
+              Flujos
             </button>
           )}
           {esAdmin && (
@@ -2126,13 +3014,30 @@ function App() {
               className={moduloActivo === 'usuarios' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('usuarios')}
             >
-              👥 Usuarios
+              <span className="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              </span>
+              Usuarios
             </button>
           )}
         </nav>
 
         <div className="sidebar-footer">
-          <button className="sidebar-btn sidebar-btn-salir" onClick={cerrarSesion}>⏻ Cerrar sesión</button>
+          <button className="sidebar-btn sidebar-btn-salir" onClick={cerrarSesion}>
+            <span className="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </span>
+            Cerrar sesión
+          </button>
         </div>
       </aside>
       <main className="contenido">
@@ -2142,15 +3047,39 @@ function App() {
               type="button"
               className="btn-menu-movil"
               onClick={() => setMenuMovilAbierto((prev) => !prev)}
+              aria-label="Abrir menú"
             >
-              ☰
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
             </button>
             <h1>Sistema ERP de Mantenimiento</h1>
           </div>
           <div className="acciones-navbar">
-            <span>Área activa: {moduloActivo} | Roles: {rolesUsuario.join(', ') || 'N/A'}</span>
+            <span className="navbar-meta">Área activa: {moduloActivo} | Roles: {rolesUsuario.join(', ') || 'N/A'}</span>
             <button type="button" className="btn-tema" onClick={alternarTema}>
-              {temaOscuro ? '☀️ Modo claro' : '🌙 Modo oscuro'}
+              {temaOscuro ? (
+                <>
+                  <span className="nav-icon btn-tema-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75">
+                      <circle cx="12" cy="12" r="4" />
+                      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                    </svg>
+                  </span>
+                  Modo claro
+                </>
+              ) : (
+                <>
+                  <span className="nav-icon btn-tema-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75">
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                    </svg>
+                  </span>
+                  Modo oscuro
+                </>
+              )}
             </button>
           </div>
         </header>

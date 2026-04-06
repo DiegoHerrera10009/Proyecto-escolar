@@ -78,6 +78,24 @@ public class ServicioAutenticacion {
         return usuarioRepositorio.findById(usuarioId);
     }
 
+    /** Comprueba la clave en texto plano contra el hash almacenado (p. ej. confirmación de acciones sensibles). */
+    public boolean claveCoincide(Usuario usuario, String clavePlana) {
+        if (usuario == null || clavePlana == null) {
+            return false;
+        }
+        String almacenada = usuario.getClave();
+        if (almacenada == null || almacenada.isEmpty()) {
+            return false;
+        }
+        return almacenada.equals(hash(clavePlana));
+    }
+
+    /** Recarga el usuario desde BD para asegurar que el hash de clave está presente (sesión/token solo guarda el id). */
+    public Usuario obtenerUsuarioConClavePorId(Long usuarioId) {
+        return usuarioRepositorio.findById(usuarioId)
+                .orElseThrow(() -> new IllegalArgumentException("Usuario no encontrado"));
+    }
+
     private Rol obtenerOCrearRol(RolNombre rolNombre) {
         return rolRepositorio.findByNombre(rolNombre).orElseGet(() -> {
             Rol rol = new Rol();

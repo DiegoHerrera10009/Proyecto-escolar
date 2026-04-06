@@ -21,19 +21,19 @@ public class ControladorInventario {
 
     @GetMapping
     public List<EquipoInventario> listar(@RequestHeader("Authorization") String autorizacion) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.BODEGA, RolNombre.COMPRAS, RolNombre.TECNICO);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.BODEGA, RolNombre.COMPRAS, RolNombre.TECNICO);
         return servicio.listar();
     }
 
     @PostMapping
     public EquipoInventario crear(@RequestHeader("Authorization") String autorizacion, @RequestBody EquipoInventario equipo) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.BODEGA, RolNombre.COMPRAS);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.BODEGA, RolNombre.COMPRAS);
         return servicio.guardar(equipo);
     }
 
     @PutMapping("/{id}")
     public EquipoInventario actualizar(@RequestHeader("Authorization") String autorizacion, @PathVariable Long id, @RequestBody EquipoInventario equipo) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.BODEGA, RolNombre.HSEQ);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.BODEGA, RolNombre.HSEQ);
         equipo.setId(id);
         return servicio.guardar(equipo);
     }

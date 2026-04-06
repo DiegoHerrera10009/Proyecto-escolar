@@ -1,12 +1,16 @@
 com\susequid\erp\controlador\ControladorInventario.class
 com\susequid\erp\dto\LoginRespuesta.class
 com\susequid\erp\entidad\HistorialTareaCampo.class
+com\susequid\erp\dto\CrearCatalogoInventarioPeticion.class
+com\susequid\erp\servicio\ServicioInventarioCatalogo.class
 com\susequid\erp\config\ConfiguracionCors.class
 com\susequid\erp\dto\RegistroUsuarioPeticion.class
+com\susequid\erp\entidad\InventarioCatalogo.class
 com\susequid\erp\repositorio\EtapaTareaCampoRepositorio.class
 com\susequid\erp\repositorio\RolRepositorio.class
 com\susequid\erp\entidad\Rol.class
 com\susequid\erp\controlador\ControladorUsuario.class
+com\susequid\erp\repositorio\InventarioCatalogoRepositorio.class
 com\susequid\erp\servicio\ServicioUsuario.class
 com\susequid\erp\dto\CambioRolUsuarioPeticion.class
 com\susequid\erp\servicio\ServicioInventario.class
@@ -29,6 +33,7 @@ com\susequid\erp\repositorio\FormularioDinamicoRepositorio.class
 com\susequid\erp\servicio\ServicioAutenticacion.class
 com\susequid\erp\servicio\ServicioWorkflow.class
 com\susequid\erp\controlador\ControladorTareaCampo.class
+com\susequid\erp\repositorio\InventarioItemRepositorio.class
 com\susequid\erp\controlador\ControladorAutenticacion.class
 com\susequid\erp\controlador\ControladorPlantaElectrica.class
 com\susequid\erp\dto\CambioEstadoTareaCampoPeticion.class
@@ -45,10 +50,12 @@ com\susequid\erp\repositorio\RespuestaFormularioRepositorio.class
 com\susequid\erp\entidad\EstadoTareaCampo.class
 com\susequid\erp\entidad\TareaCampo.class
 com\susequid\erp\dto\CrearInstanciaFlujoPeticion.class
+com\susequid\erp\dto\EliminarCatalogoInventarioPeticion.class
 com\susequid\erp\dto\PasoFlujoDefPeticion.class
 com\susequid\erp\entidad\PlantaElectrica.class
 com\susequid\erp\dto\CrearTareaCampoPeticion.class
 com\susequid\erp\entidad\EstadoEquipo.class
+com\susequid\erp\controlador\ControladorInventarioCatalogo.class
 com\susequid\erp\entidad\EstadoWorkflow.class
 com\susequid\erp\entidad\EvidenciaDigital.class
 com\susequid\erp\servicio\ServicioFlujoCampo.class
@@ -60,7 +67,9 @@ com\susequid\erp\dto\AsignarTareaCampoPeticion.class
 com\susequid\erp\entidad\MantenimientoPlanta.class
 com\susequid\erp\dto\CambioEstadoWorkflowPeticion.class
 com\susequid\erp\servicio\ServicioFormulario.class
+com\susequid\erp\entidad\InventarioItem$1.class
 com\susequid\erp\entidad\TipoVisibilidadFlujo.class
 com\susequid\erp\servicio\ServicioAutorizacion.class
 com\susequid\erp\repositorio\UsuarioRepositorio.class
+com\susequid\erp\entidad\InventarioItem.class
 com\susequid\erp\controlador\ControladorWorkflow.class

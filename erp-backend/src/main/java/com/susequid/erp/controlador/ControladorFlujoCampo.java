@@ -2,6 +2,7 @@ package com.susequid.erp.controlador;
 
 import com.susequid.erp.dto.CompletarPasoFlujoPeticion;
 import com.susequid.erp.dto.CrearInstanciaFlujoPeticion;
+import com.susequid.erp.dto.CrearPedidoFlujoPeticion;
 import com.susequid.erp.dto.CrearPlantillaFlujoPeticion;
 import com.susequid.erp.entidad.EstadoTareaCampo;
 import com.susequid.erp.entidad.EtapaTareaCampo;
@@ -112,6 +113,15 @@ public class ControladorFlujoCampo {
     ) {
         Usuario u = autorizacion.requerirUsuario(auth);
         return servicioFlujo.iniciarEjecucionDesdeMenu(id, u);
+    }
+
+    @PostMapping("/pedidos")
+    public TareaCampo iniciarFlujoPedido(
+            @RequestHeader("Authorization") String auth,
+            @RequestBody CrearPedidoFlujoPeticion peticion
+    ) {
+        Usuario comercial = autorizacion.requerirRol(auth, RolNombre.COMERCIAL);
+        return servicioFlujo.iniciarFlujoPedido(peticion, comercial);
     }
 
     // ===== INSTANCIAS ÚNICAS (admin) =====

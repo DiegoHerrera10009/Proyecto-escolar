@@ -1,0 +1,242 @@
+@startuml modelo_er_susequid
+!theme plain
+skinparam linetype ortho
+title Modelo entidad-relación — ERP Susequid (PostgreSQL / JPA)
+
+hide circle
+skinparam entity {
+  BackgroundColor White
+  BorderColor #333333
+}
+
+' ========== Seguridad ==========
+entity "usuarios" as usuarios {
+  * **id** : BIGINT <<PK>>
+  --
+  * nombre_completo : VARCHAR
+  * correo : VARCHAR <<UK>>
+  * clave : VARCHAR
+}
+
+entity "roles" as roles {
+  * **id** : BIGINT <<PK>>
+  --
+  * nombre : VARCHAR <<UK>>
+  .. catálogo de roles (enum en app) ..
+}
+
+entity "usuarios_roles" as ur {
+  * **usuario_id** : BIGINT <<FK>>
+  * **rol_id** : BIGINT <<FK>>
+  --
+  <<PK>> (usuario_id, rol_id)
+}
+
+' ========== Operación técnica ==========
+entity "plantas_electricas" as plantas {
+  * **id** : BIGINT <<PK>>
+  --
+  * nombre : VARCHAR
+  * serial : VARCHAR <<UK>>
+  ubicacion : VARCHAR
+  * estado : VARCHAR
+  tecnico_asignado_id : BIGINT <<FK>> «opcional»
+}
+
+entity "mantenimientos_planta" as mantos {
+  * **id** : BIGINT <<PK>>
+  --
+  * planta_id : BIGINT <<FK>>
+  tecnico_id : BIGINT <<FK>> «opcional»
+  * fecha : DATE
+  descripcion : VARCHAR(1500)
+  resultado : VARCHAR
+}
+
+' ========== Inventario (legacy + catálogo dinámico) ==========
+entity "equipos_inventario" as equipos {
+  * **id** : BIGINT <<PK>>
+  --
+  * nombre : VARCHAR
+  * serial : VARCHAR <<UK>>
+  responsable : VARCHAR
+  * estado : VARCHAR
+  ubicacion : VARCHAR
+}
+
+entity "inventario_catalogos" as inv_cat {
+  * **id** : BIGINT <<PK>>
+  --
+  * nombre : VARCHAR <<UK>>
+  columnas_json : VARCHAR(2000)
+}
+
+entity "inventario_items" as inv_items {
+  * **id** : BIGINT <<PK>>
+  --
+  * catalogo_id : BIGINT <<FK>>
+  * nombre : VARCHAR
+  serial : VARCHAR
+  responsable : VARCHAR
+  * estado : VARCHAR
+  ubicacion : VARCHAR
+  datos_extra_json : VARCHAR(4000)
+  ..
+  <<UK>> (catalogo_id, serial)
+}
+
+' ========== Formularios ==========
+entity "formularios_dinamicos" as forms {
+  * **id** : BIGINT <<PK>>
+  --
+  * nombre : VARCHAR
+  * esquema_json : VARCHAR(5000)
+}
+
+entity "respuestas_formulario" as resp_forms {
+  * **id** : BIGINT <<PK>>
+  --
+  * formulario_id : BIGINT <<FK>>
+  planta_id : BIGINT <<FK>> «opcional»
+  equipo_id : BIGINT <<FK>> «opcional»
+  usuario_id : BIGINT <<FK>> «opcional»
+  etapa_tarea_campo_id : BIGINT <<FK>> «opcional»
+  * respuesta_json : VARCHAR(5000)
+  * fecha_registro : TIMESTAMP
+}
+
+' ========== Workflow interáreas ==========
+entity "workflows" as wf {
+  * **id** : BIGINT <<PK>>
+  --
+  * nombre_proceso : VARCHAR
+  * area_origen : VARCHAR
+  * area_destino : VARCHAR
+  * referencia_tipo : VARCHAR
+  * referencia_id : BIGINT
+  * estado : VARCHAR
+  * fecha_creacion : TIMESTAMP
+}
+
+entity "bitacora_workflow" as bit_wf {
+  * **id** : BIGINT <<PK>>
+  --
+  * workflow_id : BIGINT <<FK>>
+  * estado_anterior : VARCHAR
+  * estado_nuevo : VARCHAR
+  comentario : VARCHAR(1000)
+  usuario_id : BIGINT <<FK>> «opcional»
+  * fecha_registro : TIMESTAMP
+}
+
+' ========== Tareas de campo / flujos ==========
+entity "tareas_campo" as tareas {
+  * **id** : BIGINT <<PK>>
+  --
+  * titulo : VARCHAR
+  descripcion : VARCHAR(2000)
+  * estado : VARCHAR
+  * creado_por_id : BIGINT <<FK>>
+  asignado_a_id : BIGINT <<FK>> «opcional»
+  formulario_id : BIGINT <<FK>> «opcional»
+  planta_id : BIGINT <<FK>> «opcional»
+  equipo_id : BIGINT <<FK>> «opcional»
+  plantilla_flujo_id : BIGINT <<FK>> «opcional» «self»
+  latitud : DOUBLE
+  longitud : DOUBLE
+  * fecha_creacion : TIMESTAMP
+  fecha_vencimiento : TIMESTAMP
+  * es_plantilla_flujo : BOOLEAN
+  tipo_visibilidad_flujo : VARCHAR
+  * seccion_panel : VARCHAR
+  * visible_en_menu_flujo : BOOLEAN
+  * menu_inicio_rol : VARCHAR(50)
+}
+
+entity "etapas_tarea_campo" as etapas {
+  * **id** : BIGINT <<PK>>
+  --
+  * tarea_id : BIGINT <<FK>>
+  * nombre : VARCHAR
+  * orden : INT
+  * completada : BOOLEAN
+  formulario_id : BIGINT <<FK>> «opcional»
+  rol_responsable : VARCHAR(50)
+  respuesta_json : VARCHAR(5000)
+  completada_en : TIMESTAMP
+  completada_por_id : BIGINT <<FK>> «opcional»
+}
+
+entity "historial_tarea_campo" as hist_tc {
+  * **id** : BIGINT <<PK>>
+  --
+  * tarea_id : BIGINT <<FK>>
+  * estado_anterior : VARCHAR
+  * estado_nuevo : VARCHAR
+  comentario : VARCHAR(1500)
+  usuario_id : BIGINT <<FK>> «opcional»
+  * fecha_registro : TIMESTAMP
+}
+
+entity "evidencias_digitales" as evid {
+  * **id** : BIGINT <<PK>>
+  --
+  * tarea_id : BIGINT <<FK>>
+  * tipo : VARCHAR
+  * nombre_archivo : VARCHAR
+  * ruta_archivo : VARCHAR
+  mime_type : VARCHAR
+  tamano_bytes : BIGINT
+  latitud : DOUBLE
+  longitud : DOUBLE
+  usuario_id : BIGINT <<FK>> «opcional»
+  * fecha_registro : TIMESTAMP
+}
+
+' ========== Relaciones (cardinalidad) ==========
+usuarios ||--o{ ur
+roles    ||--o{ ur
+
+usuarios |o--o{ plantas : tecnico_asignado
+plantas  ||--o{ mantos
+usuarios |o--o{ mantos : tecnico
+
+inv_cat  ||--o{ inv_items
+
+forms    ||--o{ resp_forms
+plantas  |o--o{ resp_forms
+equipos  |o--o{ resp_forms
+usuarios |o--o{ resp_forms
+etapas   |o--o{ resp_forms
+
+wf       ||--o{ bit_wf
+usuarios |o--o{ bit_wf
+
+usuarios ||--o{ tareas : creado_por
+usuarios |o--o{ tareas : asignado_a
+forms    |o--o{ tareas
+plantas  |o--o{ tareas
+equipos  |o--o{ tareas
+tareas   |o--o{ tareas : plantilla → instancia
+
+tareas   ||--o{ etapas
+forms    |o--o{ etapas
+usuarios |o--o{ etapas : completada_por
+
+tareas   ||--o{ hist_tc
+usuarios |o--o{ hist_tc
+
+tareas   ||--o{ evid
+usuarios |o--o{ evid
+
+note bottom of wf
+  **referencia_tipo** + **referencia_id** implementan
+  enlace polimórfico lógico a otras tablas (sin FK física única).
+end note
+
+note bottom of inv_items
+  Catálogo define columnas en **columnas_json**;
+  valores extra en **datos_extra_json**.
+end note
+
+@enduml

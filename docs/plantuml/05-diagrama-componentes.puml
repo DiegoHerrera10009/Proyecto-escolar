@@ -1,0 +1,33 @@
+@startuml componentes_erp_susequid
+!theme plain
+title Diagrama de componentes — Arquitectura general
+
+package "Cliente" {
+  [erp-frontend\n(React)] as FE
+  [erp-mobile\n(React Native / Expo)] as MOB
+}
+
+package "Servidor de aplicación" {
+  [API REST\nSpring Boot] as API
+  [Capa servicio\n+ seguridad JWT] as SVC
+  [JPA / Hibernate] as JPA
+}
+
+database "PostgreSQL" as DB
+
+cloud "Almacenamiento\n(archivos evidencia)" as FS <<optional>>
+
+FE --> API : HTTPS / JSON
+MOB --> API : HTTPS / JSON
+API --> SVC
+SVC --> JPA
+JPA --> DB : JDBC
+SVC --> FS : subida evidencias\n(imagen / firma / archivo)
+
+note right of API
+  Módulos típicos: auth, plantas,
+  inventario, formularios,
+  workflows, tareas de campo.
+end note
+
+@enduml

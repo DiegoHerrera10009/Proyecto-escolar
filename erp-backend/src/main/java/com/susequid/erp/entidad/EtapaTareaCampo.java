@@ -42,7 +42,7 @@ public class EtapaTareaCampo {
     @Column(name = "rol_responsable", length = 50)
     private String rolResponsable;
 
-    @Column(name = "respuesta_json", length = 5000)
+    @Column(name = "respuesta_json", columnDefinition = "TEXT")
     private String respuestaJson;
 
     @Column(name = "completada_en")

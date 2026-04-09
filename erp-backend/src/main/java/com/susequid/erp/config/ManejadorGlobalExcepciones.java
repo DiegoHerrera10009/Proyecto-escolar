@@ -13,11 +13,39 @@ public class ManejadorGlobalExcepciones {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>> manejarRuntime(RuntimeException ex) {
+        String mensaje = resolverMensaje(ex);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "timestamp", LocalDateTime.now().toString(),
                 "estado", 400,
-                "mensaje", ex.getMessage() == null ? "Error de validacion" : ex.getMessage()
+                "mensaje", mensaje
         ));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> manejarGenerica(Exception ex) {
+        String mensaje = resolverMensaje(ex);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "timestamp", LocalDateTime.now().toString(),
+                "estado", 400,
+                "mensaje", mensaje
+        ));
+    }
+
+    private String resolverMensaje(Throwable ex) {
+        if (ex == null) {
+            return "Error de validacion";
+        }
+        if (ex.getMessage() != null && !ex.getMessage().isBlank()) {
+            return ex.getMessage();
+        }
+        Throwable causa = ex.getCause();
+        while (causa != null) {
+            if (causa.getMessage() != null && !causa.getMessage().isBlank()) {
+                return causa.getMessage();
+            }
+            causa = causa.getCause();
+        }
+        return "Error de validacion (" + ex.getClass().getSimpleName() + ")";
     }
 }
 

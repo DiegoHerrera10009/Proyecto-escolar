@@ -1,0 +1,33 @@
+@startuml estados_tarea_campo
+!theme plain
+title Máquina de estados — TareaCampo / plantillas de flujo (EstadoTareaCampo)
+
+state "Plantilla (admin)" as tpl {
+  [*] --> BORRADOR : nueva plantilla
+  BORRADOR --> PUBLICADA : publicar
+  PUBLICADA --> BORRADOR : volver a edición\n(según reglas de negocio)
+}
+
+state "Ejecución en campo" as exec {
+  [*] --> PENDIENTE : instanciar tarea
+  PENDIENTE --> EN_PROCESO : iniciar trabajo
+  EN_PROCESO --> PENDIENTE_APROBACION : enviar a aprobación
+  PENDIENTE_APROBACION --> TERMINADA : aprobar
+  PENDIENTE_APROBACION --> EN_PROCESO : devolver
+  PENDIENTE --> CANCELADA
+  EN_PROCESO --> CANCELADA
+  TERMINADA --> [*]
+  CANCELADA --> [*]
+}
+
+note bottom of tpl
+  **esPlantillaFlujo = true** distingue
+  definición de flujo vs instancia operativa.
+end note
+
+note bottom of exec
+  **HistorialTareaCampo** guarda cambios
+  de estado con usuario y comentario.
+end note
+
+@enduml

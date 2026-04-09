@@ -1,6 +1,7 @@
 package com.susequid.erp.servicio;
 
 import com.susequid.erp.dto.CompletarPasoFlujoPeticion;
+import com.susequid.erp.dto.CrearPedidoFlujoPeticion;
 import com.susequid.erp.dto.CrearInstanciaFlujoPeticion;
 import com.susequid.erp.dto.CrearPlantillaFlujoPeticion;
 import com.susequid.erp.dto.PasoFlujoDefPeticion;
@@ -24,6 +25,17 @@ public class ServicioFlujoCampo {
     private final HistorialTareaCampoRepositorio historialRepositorio;
     private final RespuestaFormularioRepositorio respuestaRepositorio;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String TITULO_BASE_PEDIDOS = "Flujo de Pedido Comercial";
+    private static final String NOMBRE_FORMULARIO_COMERCIAL_PEDIDOS = "FORM_PEDIDOS_COMERCIAL";
+    private static final String NOMBRE_FORMULARIO_BODEGA_REVISION = "FORM_PEDIDOS_BODEGA_REVISION";
+    private static final String NOMBRE_FORMULARIO_COMPRAS = "FORM_PEDIDOS_COMPRAS";
+    private static final String NOMBRE_FORMULARIO_BODEGA_RECEPCION = "FORM_PEDIDOS_BODEGA_RECEPCION";
+    private static final String NOMBRE_FORMULARIO_BODEGA_DESPACHO = "FORM_PEDIDOS_BODEGA_DESPACHO";
+    private static final String ETAPA_COMERCIAL = "Comercial - Crear pedido";
+    private static final String ETAPA_BODEGA_REVISION = "Bodega - Revisar inventario";
+    private static final String ETAPA_COMPRAS = "Compras - Gestionar compra";
+    private static final String ETAPA_BODEGA_RECEPCION = "Bodega - Registrar recepcion";
+    private static final String ETAPA_BODEGA_DESPACHO = "Bodega - Despachar pedido";
 
     public ServicioFlujoCampo(
             TareaCampoRepositorio tareaRepositorio,
@@ -303,6 +315,89 @@ public class ServicioFlujoCampo {
         return clonarEjecucion(plantilla, titulo, asignado, admin);
     }
 
+    @Transactional
+    public TareaCampo iniciarFlujoPedido(CrearPedidoFlujoPeticion peticion, Usuario comercial) {
+        if (!usuarioTieneRolNombre(comercial, RolNombre.COMERCIAL.name()) && !usuarioEsAdministrador(comercial)) {
+            throw new RuntimeException("Solo Comercial o Administrador puede crear pedidos");
+        }
+        if (peticion == null || peticion.getProductos() == null || peticion.getProductos().isEmpty()) {
+            throw new RuntimeException("El pedido debe incluir al menos un producto");
+        }
+        if (peticion.getProductos().stream().anyMatch(p -> p == null || p.isBlank())) {
+            throw new RuntimeException("Todos los productos del pedido deben tener nombre");
+        }
+
+        FormularioDinamico formularioComercial = obtenerOCrearFormularioPedido(
+                NOMBRE_FORMULARIO_COMERCIAL_PEDIDOS,
+                "{\"campos\":[{\"nombre\":\"pedidoCreado\",\"etiqueta\":\"Pedido creado\",\"tipo\":\"string\"}]}"
+        );
+        FormularioDinamico formularioBodegaRevision = obtenerOCrearFormularioPedido(
+                NOMBRE_FORMULARIO_BODEGA_REVISION,
+                "{\"campos\":[" +
+                        "{\"nombre\":\"inventarioCompleto\",\"etiqueta\":\"Inventario completo\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"productosFaltantes\",\"etiqueta\":\"Productos faltantes (si aplica)\",\"tipo\":\"string\"}" +
+                        "]}"
+        );
+        FormularioDinamico formularioCompras = obtenerOCrearFormularioPedido(
+                NOMBRE_FORMULARIO_COMPRAS,
+                "{\"campos\":[" +
+                        "{\"nombre\":\"cotizacionesSolicitadas\",\"etiqueta\":\"Cotizaciones solicitadas\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"ordenCompraGenerada\",\"etiqueta\":\"Orden de compra generada\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"compraRealizada\",\"etiqueta\":\"Compra realizada\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}" +
+                        "]}"
+        );
+        FormularioDinamico formularioBodegaRecepcion = obtenerOCrearFormularioPedido(
+                NOMBRE_FORMULARIO_BODEGA_RECEPCION,
+                "{\"campos\":[" +
+                        "{\"nombre\":\"productosRecibidos\",\"etiqueta\":\"Productos recibidos en bodega\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}" +
+                        "]}"
+        );
+        FormularioDinamico formularioBodegaDespacho = obtenerOCrearFormularioPedido(
+                NOMBRE_FORMULARIO_BODEGA_DESPACHO,
+                "{\"campos\":[" +
+                        "{\"nombre\":\"despachoRealizado\",\"etiqueta\":\"Despacho realizado\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"observacionDespacho\",\"etiqueta\":\"Observación despacho\",\"tipo\":\"string\"}" +
+                        "]}"
+        );
+        TareaCampo ejecucion = new TareaCampo();
+        String titulo = (peticion.getTitulo() != null && !peticion.getTitulo().isBlank())
+                ? peticion.getTitulo().trim()
+                : TITULO_BASE_PEDIDOS + " - " + LocalDateTime.now().toLocalDate();
+        String descripcion = (peticion.getDescripcion() != null ? peticion.getDescripcion().trim() : "");
+        String descripcionProductos = "Productos: " + String.join(", ", peticion.getProductos());
+        ejecucion.setTitulo(titulo);
+        ejecucion.setDescripcion(descripcion.isBlank() ? descripcionProductos : descripcion + " | " + descripcionProductos);
+        ejecucion.setEstado(EstadoTareaCampo.EN_PROCESO);
+        ejecucion.setEsPlantillaFlujo(false);
+        ejecucion.setSeccionPanel(SeccionPanelFlujo.OPERATIVOS);
+        ejecucion.setMenuInicioRol(RolNombre.COMERCIAL.name());
+        ejecucion.setVisibleEnMenuFlujo(false);
+        ejecucion.setCreadoPor(comercial);
+        ejecucion.setFormulario(formularioComercial);
+        ejecucion = tareaRepositorio.save(ejecucion);
+
+        // Se guarda todo el flujo en código. La etapa Comercial queda cerrada al crear el pedido.
+        String productosJson = peticion.getProductos().stream()
+                .map(p -> "\"" + p.replace("\"", "\\\"") + "\"")
+                .collect(Collectors.joining(","));
+        crearEtapaPedido(ejecucion, formularioComercial, ETAPA_COMERCIAL, 1, RolNombre.COMERCIAL.name(), true, comercial,
+                "{\"pedidoCreado\":true,\"productos\":[" + productosJson + "]}");
+        crearEtapaPedido(ejecucion, formularioBodegaRevision, ETAPA_BODEGA_REVISION, 2, RolNombre.BODEGA.name(), false, null, null);
+        crearEtapaPedido(ejecucion, formularioCompras, ETAPA_COMPRAS, 3, RolNombre.COMPRAS.name(), false, null, null);
+        crearEtapaPedido(ejecucion, formularioBodegaRecepcion, ETAPA_BODEGA_RECEPCION, 4, RolNombre.BODEGA.name(), false, null, null);
+        crearEtapaPedido(ejecucion, formularioBodegaDespacho, ETAPA_BODEGA_DESPACHO, 5, RolNombre.BODEGA.name(), false, null, null);
+
+        HistorialTareaCampo h = new HistorialTareaCampo();
+        h.setTarea(ejecucion);
+        h.setEstadoAnterior(EstadoTareaCampo.EN_PROCESO);
+        h.setEstadoNuevo(EstadoTareaCampo.EN_PROCESO);
+        h.setComentario("Pedido creado por Comercial. Flujo enviado a Bodega para revision de inventario");
+        h.setUsuario(comercial);
+        historialRepositorio.save(h);
+
+        return tareaRepositorio.findById(ejecucion.getId()).orElse(ejecucion);
+    }
+
     // =====================================================
     // MIS ACTIVIDADES — lo que ve técnico / supervisor
     // =====================================================
@@ -413,11 +508,17 @@ public class ServicioFlujoCampo {
             throw new RuntimeException("No tiene turno para este paso");
         }
         String json = peticion.getRespuestaJson() != null ? peticion.getRespuestaJson() : "{}";
-        if (json.length() > 4900) {
-            throw new RuntimeException("Respuesta demasiado larga");
-        }
         if (!tieneFirmaValida(json)) {
             throw new RuntimeException("La firma es obligatoria para completar el formulario");
+        }
+
+        boolean esFlujoPedido = esFlujoPedidoComercial(tarea);
+        if (esFlujoPedido) {
+            validarDatosPasoFlujoPedido(pasoActivo.getNombre(), json);
+        }
+        boolean requiereCompra = false;
+        if (esFlujoPedido && ETAPA_BODEGA_REVISION.equals(pasoActivo.getNombre())) {
+            requiereCompra = requiereCompraDesdeRevision(json);
         }
 
         pasoActivo.setCompletada(true);
@@ -432,6 +533,15 @@ public class ServicioFlujoCampo {
         rf.setRespuestaJson(json);
         rf.setEtapaTareaCampo(pasoActivo);
         respuestaRepositorio.save(rf);
+
+        if (esFlujoPedido && ETAPA_BODEGA_REVISION.equals(pasoActivo.getNombre()) && !requiereCompra) {
+            marcarEtapaSaltada(tareaId, ETAPA_COMPRAS, usuario,
+                    "Etapa omitida: inventario completo, no se requiere compra");
+            marcarEtapaSaltada(tareaId, ETAPA_BODEGA_RECEPCION, usuario,
+                    "Etapa omitida: no hubo proceso de compras para recepcion");
+            marcarEtapaSaltada(tareaId, ETAPA_BODEGA_DESPACHO, usuario,
+                    "Etapa omitida: pedido disponible completo, flujo finalizado en revision de bodega");
+        }
 
         List<EtapaTareaCampo> etapasActualizadas = etapaRepositorio.findByTarea_IdOrderByOrdenAsc(tareaId);
         boolean quedan = etapasActualizadas.stream()
@@ -717,6 +827,143 @@ public class ServicioFlujoCampo {
             return firma.startsWith("data:image/");
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    private EtapaTareaCampo crearEtapaPedido(
+            TareaCampo tarea,
+            FormularioDinamico formulario,
+            String nombre,
+            int orden,
+            String rolResponsable,
+            boolean completada,
+            Usuario completadaPor,
+            String respuestaJson
+    ) {
+        EtapaTareaCampo e = new EtapaTareaCampo();
+        e.setTarea(tarea);
+        e.setNombre(nombre);
+        e.setOrden(orden);
+        e.setFormulario(formulario);
+        e.setRolResponsable(rolResponsable);
+        e.setCompletada(completada);
+        if (completada) {
+            e.setCompletadaEn(LocalDateTime.now());
+            e.setCompletadaPor(completadaPor);
+            e.setRespuestaJson(respuestaJson != null ? respuestaJson : "{}");
+        }
+        return etapaRepositorio.save(e);
+    }
+
+    private FormularioDinamico obtenerOCrearFormularioPedido(String nombre, String esquemaJson) {
+        return formularioRepositorio.findAll().stream()
+                .filter(f -> nombre.equalsIgnoreCase(f.getNombre()))
+                .findFirst()
+                .orElseGet(() -> {
+                    FormularioDinamico nuevo = new FormularioDinamico();
+                    nuevo.setNombre(nombre);
+                    nuevo.setEsquemaJson(esquemaJson);
+                    return formularioRepositorio.save(nuevo);
+                });
+    }
+
+    private boolean esFlujoPedidoComercial(TareaCampo tarea) {
+        if (tarea == null || tarea.getTitulo() == null) {
+            return false;
+        }
+        return tarea.getTitulo().startsWith(TITULO_BASE_PEDIDOS)
+                || (tarea.getDescripcion() != null && tarea.getDescripcion().contains("Productos:"));
+    }
+
+    private boolean requiereCompraDesdeRevision(String respuestaJson) {
+        try {
+            JsonNode nodo = objectMapper.readTree(respuestaJson);
+            if (!nodo.has("inventarioCompleto")) {
+                throw new RuntimeException("Bodega debe indicar si el inventario esta completo");
+            }
+            boolean inventarioCompleto = valorBooleanoFlexible(nodo.path("inventarioCompleto"), true);
+            if (inventarioCompleto) {
+                return false;
+            }
+            String faltantes = nodo.path("productosFaltantes").asText("").trim();
+            if (faltantes.isBlank()) {
+                throw new RuntimeException("Si faltan productos, Bodega debe especificar productosFaltantes");
+            }
+            return true;
+        } catch (Exception ex) {
+            if (ex instanceof RuntimeException) {
+                throw (RuntimeException) ex;
+            }
+            throw new RuntimeException("Respuesta de bodega invalida: se esperaba JSON con disponibilidad de inventario");
+        }
+    }
+
+    private void validarDatosPasoFlujoPedido(String nombreEtapa, String respuestaJson) {
+        try {
+            JsonNode nodo = objectMapper.readTree(respuestaJson);
+            if (ETAPA_BODEGA_REVISION.equals(nombreEtapa)) {
+                requiereCompraDesdeRevision(respuestaJson);
+                return;
+            }
+            if (ETAPA_COMPRAS.equals(nombreEtapa)) {
+                if (!valorBooleanoFlexible(nodo.path("cotizacionesSolicitadas"), false)
+                        || !valorBooleanoFlexible(nodo.path("ordenCompraGenerada"), false)
+                        || !valorBooleanoFlexible(nodo.path("compraRealizada"), false)) {
+                    throw new RuntimeException("Compras debe completar cotizaciones, orden de compra y compra realizada");
+                }
+                return;
+            }
+            if (ETAPA_BODEGA_RECEPCION.equals(nombreEtapa)) {
+                if (!valorBooleanoFlexible(nodo.path("productosRecibidos"), false)) {
+                    throw new RuntimeException("Bodega debe confirmar productosRecibidos para continuar");
+                }
+                return;
+            }
+            if (ETAPA_BODEGA_DESPACHO.equals(nombreEtapa)
+                    && !valorBooleanoFlexible(nodo.path("despachoRealizado"), false)) {
+                throw new RuntimeException("Debe confirmar despachoRealizado para terminar el flujo");
+            }
+        } catch (Exception ex) {
+            if (ex instanceof RuntimeException) {
+                throw (RuntimeException) ex;
+            }
+            throw new RuntimeException("Respuesta invalida para la etapa " + nombreEtapa);
+        }
+    }
+
+    private boolean valorBooleanoFlexible(JsonNode nodo, boolean valorPorDefecto) {
+        if (nodo == null || nodo.isMissingNode() || nodo.isNull()) {
+            return valorPorDefecto;
+        }
+        if (nodo.isBoolean()) {
+            return nodo.asBoolean();
+        }
+        String texto = nodo.asText("").trim().toUpperCase(Locale.ROOT);
+        if (texto.isBlank()) {
+            return valorPorDefecto;
+        }
+        return "TRUE".equals(texto) || "SI".equals(texto) || "SÍ".equals(texto) || "1".equals(texto);
+    }
+
+    private void marcarEtapaSaltada(Long tareaId, String nombreEtapa, Usuario usuario, String comentario) {
+        List<EtapaTareaCampo> etapas = etapaRepositorio.findByTarea_IdOrderByOrdenAsc(tareaId);
+        for (EtapaTareaCampo etapa : etapas) {
+            if (nombreEtapa.equals(etapa.getNombre()) && !Boolean.TRUE.equals(etapa.getCompletada())) {
+                etapa.setCompletada(true);
+                etapa.setCompletadaEn(LocalDateTime.now());
+                etapa.setCompletadaPor(usuario);
+                etapa.setRespuestaJson("{\"saltada\":true}");
+                etapaRepositorio.save(etapa);
+
+                TareaCampo tareaViva = etapa.getTarea();
+                HistorialTareaCampo h = new HistorialTareaCampo();
+                h.setTarea(tareaViva);
+                h.setEstadoAnterior(tareaViva.getEstado());
+                h.setEstadoNuevo(tareaViva.getEstado());
+                h.setComentario(comentario);
+                h.setUsuario(usuario);
+                historialRepositorio.save(h);
+            }
         }
     }
 }

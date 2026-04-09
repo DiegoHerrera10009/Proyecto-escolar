@@ -24,7 +24,8 @@ public class ControladorWorkflow {
 
     @GetMapping
     public List<WorkflowProceso> listar(@RequestHeader("Authorization") String autorizacion) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.COMPRAS, RolNombre.BODEGA, RolNombre.HSEQ, RolNombre.TECNICO);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.COMPRAS, RolNombre.BODEGA, RolNombre.HSEQ,
+                RolNombre.TECNICO, RolNombre.COMERCIAL, RolNombre.DESPACHO);
         return servicio.listar();
     }
 
@@ -49,7 +50,8 @@ public class ControladorWorkflow {
             @RequestHeader("Authorization") String autorizacion,
             @PathVariable Long id
     ) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.COMPRAS, RolNombre.BODEGA, RolNombre.HSEQ, RolNombre.TECNICO);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.COMPRAS, RolNombre.BODEGA, RolNombre.HSEQ,
+                RolNombre.TECNICO, RolNombre.COMERCIAL, RolNombre.DESPACHO);
         return servicio.listarBitacora(id);
     }
 }

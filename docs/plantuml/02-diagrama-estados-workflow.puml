@@ -1,0 +1,21 @@
+@startuml estados_workflow
+!theme plain
+title Máquina de estados — WorkflowProceso (EstadoWorkflow)
+
+[*] --> PENDIENTE : crear solicitud
+
+PENDIENTE --> EN_PROCESO : tomar / iniciar
+PENDIENTE --> RECHAZADO : rechazar
+
+EN_PROCESO --> COMPLETADO : finalizar OK
+EN_PROCESO --> RECHAZADO : rechazar
+
+COMPLETADO --> [*]
+RECHAZADO --> [*]
+
+note right of EN_PROCESO
+  Cada transición puede registrarse
+  en **BitacoraWorkflow** (estado anterior → nuevo).
+end note
+
+@enduml

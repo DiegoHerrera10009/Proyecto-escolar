@@ -1,0 +1,22 @@
+@startuml secuencia_flujo_etapa_formulario
+!theme plain
+autonumber
+title Secuencia — Completar etapa de flujo con formulario dinámico
+
+actor "Usuario\n(rol del paso)" as U
+participant "Cliente\n(React / móvil)" as C
+participant "API REST\n(Spring Boot)" as API
+participant "Servicio\ntareas / formularios" as S
+database "PostgreSQL" as DB
+
+U -> C : Completa formulario de la etapa
+C -> API : PUT/PATCH etapa (respuesta JSON,\n marcar completada)
+API -> S : validar rol, tarea y etapa
+S -> DB : persistir **EtapaTareaCampo**\n(respuestaJson, completada, completadaPor…)
+S -> DB : opcional: crear **RespuestaFormulario**\n(enlazada a etapaTareaCampo)
+S -> DB : actualizar estado **TareaCampo**\n+ línea en **HistorialTareaCampo**
+S --> API : DTO actualizado
+API --> C : 200 OK
+C --> U : Confirmación / siguiente etapa
+
+@enduml

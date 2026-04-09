@@ -22,7 +22,8 @@ public class ControladorFormulario {
 
     @GetMapping
     public List<FormularioDinamico> listarFormularios(@RequestHeader("Authorization") String autorizacion) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.TECNICO);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.BODEGA,
+                RolNombre.COMPRAS, RolNombre.COMERCIAL);
         return servicio.listarFormularios();
     }
 
@@ -44,13 +45,15 @@ public class ControladorFormulario {
 
     @GetMapping("/respuestas")
     public List<RespuestaFormulario> listarRespuestas(@RequestHeader("Authorization") String autorizacion) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.HSEQ, RolNombre.TECNICO, RolNombre.BODEGA);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.BODEGA,
+                RolNombre.COMPRAS, RolNombre.COMERCIAL);
         return servicio.listarRespuestas();
     }
 
     @PostMapping("/respuestas")
     public RespuestaFormulario guardarRespuesta(@RequestHeader("Authorization") String autorizacion, @RequestBody RespuestaFormulario respuesta) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.HSEQ, RolNombre.TECNICO);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.BODEGA,
+                RolNombre.COMPRAS, RolNombre.COMERCIAL);
         return servicio.guardarRespuesta(respuesta);
     }
 

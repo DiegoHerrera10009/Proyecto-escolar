@@ -1,15 +1,13 @@
 package com.susequid.erp.dto;
 
-import com.susequid.erp.entidad.RolNombre;
-
 public class CambioRolUsuarioPeticion {
-    private RolNombre rol;
+    private String rol;
 
-    public RolNombre getRol() {
+    public String getRol() {
         return rol;
     }
 
-    public void setRol(RolNombre rol) {
+    public void setRol(String rol) {
         this.rol = rol;
     }
 }

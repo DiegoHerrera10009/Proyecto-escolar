@@ -17,6 +17,7 @@ com\susequid\erp\servicio\ServicioInventario.class
 com\susequid\erp\repositorio\EquipoInventarioRepositorio.class
 com\susequid\erp\entidad\TipoEvidencia.class
 com\susequid\erp\servicio\ServicioPlantaElectrica.class
+com\susequid\erp\dto\CrearPedidoFlujoPeticion.class
 com\susequid\erp\repositorio\TareaCampoRepositorio.class
 com\susequid\erp\servicio\ServicioTareaCampo.class
 com\susequid\erp\entidad\RolNombre.class
@@ -71,5 +72,6 @@ com\susequid\erp\entidad\InventarioItem$1.class
 com\susequid\erp\entidad\TipoVisibilidadFlujo.class
 com\susequid\erp\servicio\ServicioAutorizacion.class
 com\susequid\erp\repositorio\UsuarioRepositorio.class
+com\susequid\erp\config\InicializadorRolesSistema.class
 com\susequid\erp\entidad\InventarioItem.class
 com\susequid\erp\controlador\ControladorWorkflow.class

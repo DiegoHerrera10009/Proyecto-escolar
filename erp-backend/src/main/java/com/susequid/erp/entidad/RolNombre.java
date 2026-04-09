@@ -5,6 +5,8 @@ public enum RolNombre {
     TECNICO,
     SUPERVISOR,
     COMPRAS,
+    COMERCIAL,
+    DESPACHO,
     HSEQ,
     BODEGA
 }

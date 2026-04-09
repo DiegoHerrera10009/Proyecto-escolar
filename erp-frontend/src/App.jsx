@@ -115,7 +115,7 @@ function App() {
     nombreCompleto: '',
     correo: '',
     clave: '',
-    rol: 'TECNICO',
+    rol: 'COMERCIAL',
   })
   const [nuevaTareaCampo, setNuevaTareaCampo] = useState({
     titulo: '',
@@ -173,6 +173,10 @@ function App() {
   const esAdmin = rolesUsuario.includes('ADMINISTRADOR')
   const esTecnico = rolesUsuario.includes('TECNICO')
   const esSupervisor = rolesUsuario.includes('SUPERVISOR')
+  const esComercial = rolesUsuario.includes('COMERCIAL')
+  const esBodega = rolesUsuario.includes('BODEGA')
+  const esCompras = rolesUsuario.includes('COMPRAS')
+  const esOperadorFlujo = esTecnico || esSupervisor || esComercial || esBodega || esCompras
 
   const resumen = useMemo(
     () => [
@@ -783,7 +787,7 @@ function App() {
   }
 
   const refrescarPanelFlujosUsuario = useCallback(async () => {
-    if (!token || (!esTecnico && !esSupervisor && !esAdmin)) return
+    if (!token || (!esOperadorFlujo && !esAdmin)) return
     const flota = vistaSeccionFlujo === 'flota'
     const pasaSeccion = (t) => {
       const s = t.seccionPanel || 'OPERATIVOS'
@@ -835,7 +839,7 @@ function App() {
       setActividadesFlujoSeguimiento([])
       setActividadesFlujoHistorial([])
     }
-  }, [token, esTecnico, esSupervisor, esAdmin, vistaSeccionFlujo, rolesUsuario])
+  }, [token, esOperadorFlujo, esAdmin, vistaSeccionFlujo, rolesUsuario])
 
   useEffect(() => {
     if (!token) return
@@ -880,7 +884,7 @@ function App() {
         const texto = await respuesta.text()
         throw new Error(texto || 'No se pudo crear el usuario')
       }
-      setNuevoUsuario({ nombreCompleto: '', correo: '', clave: '', rol: 'TECNICO' })
+      setNuevoUsuario({ nombreCompleto: '', correo: '', clave: '', rol: 'COMERCIAL' })
       cargarDatos()
     } catch (error) {
       setMensajeError(error.message)
@@ -888,25 +892,50 @@ function App() {
   }
 
   const actualizarRolUsuario = async (usuarioId, rol) => {
-    const resp = await fetch(`${API_URL}/usuarios/${usuarioId}/rol`, {
+    const confirmado = window.confirm(`¿Confirmas asignar el rol ${rol} a este usuario?`)
+    if (!confirmado) return
+    const resp = await fetch(`${API_URL}/usuarios/${usuarioId}/rol/${encodeURIComponent(rol)}`, {
       method: 'PUT',
       headers: cabeceras(),
-      body: JSON.stringify({ rol }),
     })
     if (!resp.ok) {
-      setMensajeError(`No se pudo actualizar rol (${resp.status})`)
+      let detalle = ''
+      try {
+        const json = await resp.json()
+        detalle = json?.mensaje || json?.error || ''
+      } catch {
+        try {
+          detalle = await resp.text()
+        } catch {
+          detalle = ''
+        }
+      }
+      setMensajeError(`No se pudo actualizar rol (${resp.status})${detalle ? `: ${detalle}` : ''}`)
       return
     }
     cargarDatos()
   }
 
   const eliminarUsuario = async (usuarioId) => {
+    const confirmado = window.confirm('¿Seguro que deseas eliminar este usuario? Esta acción no se puede deshacer.')
+    if (!confirmado) return
     const resp = await fetch(`${API_URL}/usuarios/${usuarioId}`, {
       method: 'DELETE',
       headers: cabeceras(),
     })
     if (!resp.ok) {
-      setMensajeError(`No se pudo eliminar usuario (${resp.status})`)
+      let detalle = ''
+      try {
+        const json = await resp.json()
+        detalle = json?.mensaje || json?.error || ''
+      } catch {
+        try {
+          detalle = await resp.text()
+        } catch {
+          detalle = ''
+        }
+      }
+      setMensajeError(`No se pudo eliminar usuario (${resp.status})${detalle ? `: ${detalle}` : ''}`)
       return
     }
     cargarDatos()
@@ -1219,6 +1248,14 @@ function App() {
     return (campo.opciones || []).map((opcion) => ({ value: String(opcion), label: String(opcion) }))
   }
 
+  const extraerProductosPedido = (tarea) => {
+    const desc = String(tarea?.descripcion || '')
+    const marcador = 'Productos:'
+    const idx = desc.indexOf(marcador)
+    if (idx < 0) return ''
+    return desc.slice(idx + marcador.length).trim()
+  }
+
   const crearTareaCampo = async (e) => {
     e.preventDefault()
     setMensajeError('')
@@ -1448,6 +1485,43 @@ function App() {
     }
   }
 
+  const iniciarPedidoComercial = async () => {
+    if (!esComercial && !esAdmin) {
+      setMensajeError('Solo Comercial puede iniciar este flujo.')
+      return
+    }
+    const productosTexto = window.prompt('Productos del pedido (separados por coma):', 'Producto A, Producto B')
+    if (productosTexto === null) return
+    const productos = String(productosTexto)
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+    if (productos.length === 0) {
+      setMensajeError('Debes ingresar al menos un producto para crear el pedido.')
+      return
+    }
+    const titulo = window.prompt('Título del pedido (opcional):', 'Pedido comercial') || ''
+    setMensajeError('')
+    const r = await fetch(`${API_URL}/campo/flujos/pedidos`, {
+      method: 'POST',
+      headers: cabeceras(),
+      body: JSON.stringify({ titulo, productos }),
+    })
+    let cuerpo = {}
+    try {
+      cuerpo = await r.json()
+    } catch {
+      cuerpo = {}
+    }
+    if (!r.ok) {
+      setMensajeError(`No se pudo crear el pedido (${r.status}) ${cuerpo.mensaje || cuerpo.error || ''}`.trim())
+      return
+    }
+    await refrescarPanelFlujosUsuario()
+    await cargarDatos()
+    setVistaPanelFlujo('mis')
+  }
+
   const enviarPasoFlujo = async (tareaId, etapaId) => {
     setMensajeError('')
     if (!respuestasPasoFlujo.firmaSistema) {
@@ -1592,7 +1666,7 @@ function App() {
 
   const renderContenido = () => {
     if (moduloActivo === 'dashboard') {
-      if (esTecnico || esSupervisor) {
+      if (esOperadorFlujo) {
         return (
           <section className="panel-dashboard-tecnico panel-flujos-usuario">
             <div className="tabs-sub-tecnico">
@@ -1637,6 +1711,16 @@ function App() {
             </div>
             {vistaPanelFlujo === 'disponibles' && (
               <div className="grid-actividades-tecnico">
+                {esComercial && (
+                  <button
+                    type="button"
+                    className="tarjeta-actividad-tecnico"
+                    onClick={() => iniciarPedidoComercial()}
+                  >
+                    <span className="tarjeta-actividad-titulo">Pedido comercial (flujo fijo)</span>
+                    <span className="tarjeta-actividad-hint">Crear pedido e iniciar en Bodega</span>
+                  </button>
+                )}
                 {plantillasMenuFlujo.length === 0 && <p>No hay flujos disponibles en esta sección.</p>}
                 {plantillasMenuFlujo.map((p) => (
                   <button
@@ -1666,6 +1750,7 @@ function App() {
                   const etapas = [...(etapasPorActividadFlujo[t.id] || [])].sort((a, b) => (a.orden || 0) - (b.orden || 0))
                   const paso = etapas.find((e) => !e.completada)
                   const exp = String(actividadFlujoExpandidaId) === String(t.id)
+                  const productos = extraerProductosPedido(t)
                   let campos = []
                   if (paso?.formulario?.esquemaJson) {
                     try {
@@ -1687,6 +1772,7 @@ function App() {
                           Paso actual: {paso.nombre} · responsable {paso.rolResponsable}
                         </small>
                       )}
+                      {productos && <small className="texto-ref-id">Productos del pedido: {productos}</small>}
                       {exp && paso && (
                         <>
                           <h4 className="subtitulo-paso-formulario">{paso.formulario?.nombre || 'Formulario'}</h4>
@@ -1778,6 +1864,7 @@ function App() {
                       const etapas = [...(etapasPorActividadFlujo[t.id] || [])].sort((a, b) => (a.orden || 0) - (b.orden || 0))
                       const pasoActual = etapas.find((e) => !e.completada)
                       const exp = String(actividadFlujoExpandidaId) === String(t.id)
+                      const productos = extraerProductosPedido(t)
                       return (
                         <div key={`seg-${t.id}`} className="tarjeta-formulario tarjeta-formulario--seguimiento">
                           <div className="roles-grid">
@@ -1791,6 +1878,7 @@ function App() {
                               Paso en curso: {pasoActual.nombre} · a cargo {pasoActual.rolResponsable}
                             </small>
                           )}
+                          {productos && <small className="texto-ref-id">Productos del pedido: {productos}</small>}
                           {exp && (
                             <ul className="lista-etapas-flujo">
                               {etapas.map((e) => (
@@ -2853,11 +2941,14 @@ function App() {
                             <small>{u.correo}</small>
                           </div>
                           <div className="acciones-usuario-admin">
-                            <button type="button" className="btn-secundario" onClick={() => actualizarRolUsuario(u.id, 'TECNICO')}>
-                              Asignar TECNICO
+                            <button type="button" className="btn-secundario" onClick={() => actualizarRolUsuario(u.id, 'BODEGA')}>
+                              Asignar BODEGA
                             </button>
-                            <button type="button" className="btn-secundario" onClick={() => actualizarRolUsuario(u.id, 'SUPERVISOR')}>
-                              Asignar SUPERVISOR
+                            <button type="button" className="btn-secundario" onClick={() => actualizarRolUsuario(u.id, 'COMPRAS')}>
+                              Asignar COMPRAS
+                            </button>
+                            <button type="button" className="btn-secundario" onClick={() => actualizarRolUsuario(u.id, 'COMERCIAL')}>
+                              Asignar COMERCIAL
                             </button>
                             <button type="button" className="btn-peligro" onClick={() => eliminarUsuario(u.id)}>Eliminar</button>
                           </div>
@@ -2870,7 +2961,7 @@ function App() {
                 <div className="tarjeta-formulario">
                   <div className="panel-seccion-header">
                     <h3>Crear usuarios</h3>
-                    <span>Solo técnico o supervisor</span>
+                    <span>Solo bodega, compras o comercial</span>
                   </div>
                   <form className="formulario" onSubmit={guardarUsuario}>
                     <input
@@ -2898,19 +2989,28 @@ function App() {
                         <input
                           type="radio"
                           name="rolUsuario"
-                          checked={nuevoUsuario.rol === 'TECNICO'}
-                          onChange={() => setNuevoUsuario({ ...nuevoUsuario, rol: 'TECNICO' })}
+                          checked={nuevoUsuario.rol === 'BODEGA'}
+                          onChange={() => setNuevoUsuario({ ...nuevoUsuario, rol: 'BODEGA' })}
                         />
-                        TECNICO
+                        BODEGA
                       </label>
                       <label className="rol-checkbox">
                         <input
                           type="radio"
                           name="rolUsuario"
-                          checked={nuevoUsuario.rol === 'SUPERVISOR'}
-                          onChange={() => setNuevoUsuario({ ...nuevoUsuario, rol: 'SUPERVISOR' })}
+                          checked={nuevoUsuario.rol === 'COMPRAS'}
+                          onChange={() => setNuevoUsuario({ ...nuevoUsuario, rol: 'COMPRAS' })}
                         />
-                        SUPERVISOR
+                        COMPRAS
+                      </label>
+                      <label className="rol-checkbox">
+                        <input
+                          type="radio"
+                          name="rolUsuario"
+                          checked={nuevoUsuario.rol === 'COMERCIAL'}
+                          onChange={() => setNuevoUsuario({ ...nuevoUsuario, rol: 'COMERCIAL' })}
+                        />
+                        COMERCIAL
                       </label>
                     </div>
                     <button type="submit">Crear usuario</button>

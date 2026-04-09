@@ -85,7 +85,9 @@ public class ServicioWorkflow {
         }
         String normalizada = area.trim().toUpperCase();
         return switch (normalizada) {
+            case "COMERCIAL" -> RolNombre.COMERCIAL;
             case "COMPRAS" -> RolNombre.COMPRAS;
+            case "DESPACHO" -> RolNombre.DESPACHO;
             case "BODEGA" -> RolNombre.BODEGA;
             case "HSEQ" -> RolNombre.HSEQ;
             case "TECNICO", "TECNICOS", "TECNICA" -> RolNombre.TECNICO;

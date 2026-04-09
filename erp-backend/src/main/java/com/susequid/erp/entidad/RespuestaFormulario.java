@@ -27,7 +27,7 @@ public class RespuestaFormulario {
     @JoinColumn(name = "usuario_id")
     private Usuario usuario;
 
-    @Column(nullable = false, length = 5000)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String respuestaJson;
 
     @Column(nullable = false)

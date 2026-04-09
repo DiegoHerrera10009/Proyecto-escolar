@@ -3,6 +3,7 @@ package com.susequid.erp.controlador;
 import com.susequid.erp.dto.LoginPeticion;
 import com.susequid.erp.dto.LoginRespuesta;
 import com.susequid.erp.dto.RegistroUsuarioPeticion;
+import com.susequid.erp.entidad.RolNombre;
 import com.susequid.erp.entidad.Usuario;
 import com.susequid.erp.servicio.ServicioAutenticacion;
 import com.susequid.erp.servicio.ServicioAutorizacion;
@@ -24,7 +25,7 @@ public class ControladorAutenticacion {
             @RequestHeader("Authorization") String autorizacion,
             @RequestBody RegistroUsuarioPeticion peticion
     ) {
-        servicioAutorizacion.requerirSuperAdmin(autorizacion);
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR);
         return servicioAutenticacion.registrar(peticion);
     }
 

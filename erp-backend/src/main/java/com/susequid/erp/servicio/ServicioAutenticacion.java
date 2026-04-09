@@ -8,6 +8,7 @@ import com.susequid.erp.entidad.RolNombre;
 import com.susequid.erp.entidad.Usuario;
 import com.susequid.erp.repositorio.RolRepositorio;
 import com.susequid.erp.repositorio.UsuarioRepositorio;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -21,14 +22,17 @@ import java.util.stream.Collectors;
 public class ServicioAutenticacion {
     private final UsuarioRepositorio usuarioRepositorio;
     private final RolRepositorio rolRepositorio;
+    private final JdbcTemplate jdbcTemplate;
     private final Map<String, Long> sesiones = new ConcurrentHashMap<>();
 
-    public ServicioAutenticacion(UsuarioRepositorio usuarioRepositorio, RolRepositorio rolRepositorio) {
+    public ServicioAutenticacion(UsuarioRepositorio usuarioRepositorio, RolRepositorio rolRepositorio, JdbcTemplate jdbcTemplate) {
         this.usuarioRepositorio = usuarioRepositorio;
         this.rolRepositorio = rolRepositorio;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public Usuario registrar(RegistroUsuarioPeticion peticion) {
+        asegurarRolesSistema();
         usuarioRepositorio.findByCorreo(peticion.getCorreo()).ifPresent(u -> {
             throw new RuntimeException("El correo ya existe");
         });
@@ -39,14 +43,16 @@ public class ServicioAutenticacion {
         usuario.setClave(hash(peticion.getClave()));
 
         Set<RolNombre> rolesSolicitados = peticion.getRoles() == null || peticion.getRoles().isEmpty()
-                ? Set.of(RolNombre.TECNICO)
+                ? Set.of(RolNombre.COMERCIAL)
                 : peticion.getRoles();
 
-        // Regla de negocio actual: desde el panel solo se crean TECNICO o SUPERVISOR.
+        // Regla de negocio actual: desde el panel solo se crean roles operativos permitidos.
         boolean rolesValidos = rolesSolicitados.stream()
-                .allMatch(r -> r == RolNombre.TECNICO || r == RolNombre.SUPERVISOR);
+                .allMatch(r -> r == RolNombre.BODEGA
+                        || r == RolNombre.COMPRAS
+                        || r == RolNombre.COMERCIAL);
         if (!rolesValidos) {
-            throw new RuntimeException("Solo se permite crear usuarios con rol TECNICO o SUPERVISOR");
+            throw new RuntimeException("Solo se permite crear usuarios con rol BODEGA, COMPRAS o COMERCIAL");
         }
 
         Set<Rol> roles = rolesSolicitados.stream()
@@ -102,6 +108,36 @@ public class ServicioAutenticacion {
             rol.setNombre(rolNombre);
             return rolRepositorio.save(rol);
         });
+    }
+
+    private void asegurarRolesSistema() {
+        Integer existeTabla = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'roles'",
+                Integer.class
+        );
+        if (existeTabla == null || existeTabla == 0) {
+            return;
+        }
+        jdbcTemplate.execute(
+                "DELETE FROM usuarios_roles WHERE rol_id IN (" +
+                        "SELECT id FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL')" +
+                        ")"
+        );
+        jdbcTemplate.execute(
+                "DELETE FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL')"
+        );
+        jdbcTemplate.execute("ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_nombre_check");
+        jdbcTemplate.execute(
+                "ALTER TABLE roles ADD CONSTRAINT roles_nombre_check " +
+                        "CHECK (nombre IN (" +
+                        "'ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL'" +
+                        "))"
+        );
+        jdbcTemplate.execute(
+                "INSERT INTO roles (nombre) VALUES " +
+                        "('ADMINISTRADOR'),('BODEGA'),('COMPRAS'),('COMERCIAL') " +
+                        "ON CONFLICT (nombre) DO NOTHING"
+        );
     }
 
     private String hash(String texto) {

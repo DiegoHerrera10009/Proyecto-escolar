@@ -1,0 +1,237 @@
+@startuml diagrama_clases_dominio_susequid
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+title Diagrama de clases — Dominio JPA (ERP Susequid)
+
+' --- Enumeraciones ---
+enum RolNombre {
+  ADMINISTRADOR
+  TECNICO
+  SUPERVISOR
+  COMPRAS
+  HSEQ
+  BODEGA
+}
+
+enum EstadoEquipo {
+  ACTIVO
+  EN_MANTENIMIENTO
+  INACTIVO
+  DADO_DE_BAJA
+}
+
+enum EstadoWorkflow {
+  PENDIENTE
+  EN_PROCESO
+  COMPLETADO
+  RECHAZADO
+}
+
+enum EstadoTareaCampo {
+  BORRADOR
+  PUBLICADA
+  PENDIENTE
+  EN_PROCESO
+  PENDIENTE_APROBACION
+  TERMINADA
+  CANCELADA
+}
+
+enum TipoEvidencia {
+  IMAGEN
+  FIRMA
+  ARCHIVO
+}
+
+enum TipoVisibilidadFlujo {
+  MENU_PERMANENTE
+  INSTANCIA_UNICA
+}
+
+enum SeccionPanelFlujo {
+  OPERATIVOS
+  FLOTA
+}
+
+' --- Entidades principales ---
+class Usuario {
+  +id : Long
+  +nombreCompleto : String
+  +correo : String
+  +clave : String
+}
+
+class Rol {
+  +id : Long
+  +nombre : RolNombre
+}
+
+class PlantaElectrica {
+  +id : Long
+  +nombre : String
+  +serial : String
+  +ubicacion : String
+  +estado : EstadoEquipo
+}
+
+class MantenimientoPlanta {
+  +id : Long
+  +fecha : LocalDate
+  +descripcion : String
+  +resultado : String
+}
+
+class EquipoInventario {
+  +id : Long
+  +nombre : String
+  +serial : String
+  +responsable : String
+  +estado : EstadoEquipo
+  +ubicacion : String
+}
+
+class InventarioCatalogo {
+  +id : Long
+  +nombre : String
+  +columnasJson : String
+}
+
+class InventarioItem {
+  +id : Long
+  +nombre : String
+  +serial : String
+  +responsable : String
+  +estado : EstadoEquipo
+  +ubicacion : String
+  +datosExtraJson : String
+}
+
+class FormularioDinamico {
+  +id : Long
+  +nombre : String
+  +esquemaJson : String
+}
+
+class RespuestaFormulario {
+  +id : Long
+  +respuestaJson : String
+  +fechaRegistro : LocalDateTime
+}
+
+class WorkflowProceso {
+  +id : Long
+  +nombreProceso : String
+  +areaOrigen : String
+  +areaDestino : String
+  +referenciaTipo : String
+  +referenciaId : Long
+  +estado : EstadoWorkflow
+  +fechaCreacion : LocalDateTime
+}
+
+class BitacoraWorkflow {
+  +id : Long
+  +estadoAnterior : EstadoWorkflow
+  +estadoNuevo : EstadoWorkflow
+  +comentario : String
+  +fechaRegistro : LocalDateTime
+}
+
+class TareaCampo {
+  +id : Long
+  +titulo : String
+  +descripcion : String
+  +estado : EstadoTareaCampo
+  +latitud : Double
+  +longitud : Double
+  +fechaCreacion : LocalDateTime
+  +fechaVencimiento : LocalDateTime
+  +esPlantillaFlujo : Boolean
+  +tipoVisibilidadFlujo : TipoVisibilidadFlujo
+  +seccionPanel : SeccionPanelFlujo
+  +visibleEnMenuFlujo : Boolean
+  +menuInicioRol : String
+}
+
+class EtapaTareaCampo {
+  +id : Long
+  +nombre : String
+  +orden : Integer
+  +completada : Boolean
+  +rolResponsable : String
+  +respuestaJson : String
+  +completadaEn : LocalDateTime
+}
+
+class HistorialTareaCampo {
+  +id : Long
+  +estadoAnterior : EstadoTareaCampo
+  +estadoNuevo : EstadoTareaCampo
+  +comentario : String
+  +fechaRegistro : LocalDateTime
+}
+
+class EvidenciaDigital {
+  +id : Long
+  +tipo : TipoEvidencia
+  +nombreArchivo : String
+  +rutaArchivo : String
+  +mimeType : String
+  +tamanoBytes : Long
+  +latitud : Double
+  +longitud : Double
+  +fechaRegistro : LocalDateTime
+}
+
+' --- Relaciones ---
+Usuario }o--o{ Rol : «usuarios_roles»\nManyToMany
+Rol ..> RolNombre
+
+PlantaElectrica "0..1" o-- "0..*" Usuario : tecnicoAsignado
+PlantaElectrica "1" *-- "0..*" MantenimientoPlanta : planta
+MantenimientoPlanta "0..1" o-- Usuario : tecnico
+
+PlantaElectrica ..> EstadoEquipo
+EquipoInventario ..> EstadoEquipo
+InventarioItem ..> EstadoEquipo
+
+InventarioCatalogo "1" o-- "0..*" InventarioItem : catalogo
+
+FormularioDinamico "1" o-- "0..*" RespuestaFormulario : formulario
+RespuestaFormulario "0..1" o-- PlantaElectrica : planta
+RespuestaFormulario "0..1" o-- EquipoInventario : equipo
+RespuestaFormulario "0..1" o-- Usuario : usuario
+RespuestaFormulario "0..1" o-- EtapaTareaCampo : etapaTareaCampo
+
+WorkflowProceso ..> EstadoWorkflow
+BitacoraWorkflow "0..*" o-- "1" WorkflowProceso : workflow
+BitacoraWorkflow "0..1" o-- Usuario : usuario
+
+TareaCampo "1" o-- Usuario : creadoPor
+TareaCampo "0..1" o-- Usuario : asignadoA
+TareaCampo "0..1" o-- FormularioDinamico : formulario
+TareaCampo "0..1" o-- PlantaElectrica : planta
+TareaCampo "0..1" o-- EquipoInventario : equipo
+TareaCampo "0..1" o-- TareaCampo : plantillaFlujo\n(plantilla / instancia)
+TareaCampo "1" *-- "0..*" EtapaTareaCampo : etapas
+TareaCampo "1" *-- "0..*" HistorialTareaCampo : historial
+TareaCampo "1" *-- "0..*" EvidenciaDigital : evidencias
+
+EtapaTareaCampo "0..1" o-- FormularioDinamico : formulario
+EtapaTareaCampo "0..1" o-- Usuario : completadaPor
+
+EvidenciaDigital "0..1" o-- Usuario : usuario
+
+TareaCampo ..> EstadoTareaCampo
+TareaCampo ..> TipoVisibilidadFlujo
+TareaCampo ..> SeccionPanelFlujo
+HistorialTareaCampo ..> EstadoTareaCampo
+EvidenciaDigital ..> TipoEvidencia
+
+note bottom of WorkflowProceso
+  referenciaTipo + referenciaId enlazan
+  genéricamente a otro módulo (p. ej. planta, equipo).
+end note
+
+@enduml

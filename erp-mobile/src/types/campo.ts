@@ -26,6 +26,9 @@ export type EtapaTareaCampoDto = {
   nombre?: string | null
   orden?: number | null
   completada?: boolean | null
+  /** Rol que debe completar este paso (RolNombre), igual que en API */
+  rolResponsable?: string | null
+  respuestaJson?: string | null
   formulario?: { id: number; nombre?: string | null } | null
 }
 

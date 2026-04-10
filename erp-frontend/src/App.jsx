@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import './App.css'
+import { parseArchivoInventarioHerramientas } from './inventarioImport'
 
 const API_URL = 'http://localhost:8080/api'
 
@@ -36,18 +38,26 @@ function nuevaFilaColumnaPersonalizadaInventario() {
   return { id, nombre: '' }
 }
 
+function leerTokenInicial() {
+  return localStorage.getItem('erp_token') || sessionStorage.getItem('erp_token') || ''
+}
+
+function leerRolesIniciales() {
+  try {
+    const raw = localStorage.getItem('erp_roles') || sessionStorage.getItem('erp_roles')
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('erp_token') || '')
+  const [token, setToken] = useState(leerTokenInicial)
   const [correoLogin, setCorreoLogin] = useState('')
   const [claveLogin, setClaveLogin] = useState('')
-  const [rolesUsuario, setRolesUsuario] = useState(() => {
-    try {
-      const guardados = localStorage.getItem('erp_roles')
-      return guardados ? JSON.parse(guardados) : []
-    } catch {
-      return []
-    }
-  })
+  const [mostrarClaveLogin, setMostrarClaveLogin] = useState(false)
+  const [mantenerSesionLogin, setMantenerSesionLogin] = useState(false)
+  const [rolesUsuario, setRolesUsuario] = useState(leerRolesIniciales)
   const [mensajeError, setMensajeError] = useState('')
   const [temaOscuro, setTemaOscuro] = useState(() => localStorage.getItem('erp_tema') === 'oscuro')
   const [menuMovilAbierto, setMenuMovilAbierto] = useState(false)
@@ -59,6 +69,12 @@ function App() {
   const [inventarioVerSeleccion, setInventarioVerSeleccion] = useState('')
   const [plantas, setPlantas] = useState([])
   const [inventario, setInventario] = useState([])
+  const [importandoInventario, setImportandoInventario] = useState(false)
+  const archivoOpcionalAlCrearCatalogoRef = useRef(null)
+  const inputArchivoCrearCatalogoRef = useRef(null)
+  const inputImportHerramientasRef = useRef(null)
+  const inputImportCatalogoCustomRef = useRef(null)
+  const [nombreArchivoPendienteCrearCatalogo, setNombreArchivoPendienteCrearCatalogo] = useState('')
   const [catalogosInventarioLista, setCatalogosInventarioLista] = useState([])
   const [catalogoActivoId, setCatalogoActivoId] = useState('')
   const [itemsCatalogoActivo, setItemsCatalogoActivo] = useState([])
@@ -92,7 +108,14 @@ function App() {
   const [evidenciasCampo, setEvidenciasCampo] = useState([])
 
   const [nuevaPlanta, setNuevaPlanta] = useState({ nombre: '', serial: '', ubicacion: '', estado: 'ACTIVO' })
-  const [nuevoEquipo, setNuevoEquipo] = useState({ nombre: '', serial: '', responsable: '', estado: 'ACTIVO', ubicacion: '' })
+  const [nuevoEquipo, setNuevoEquipo] = useState({
+    nombre: '',
+    serial: '',
+    responsable: '',
+    estado: 'ACTIVO',
+    ubicacion: '',
+    cantidad: 1,
+  })
   const [nuevoFormulario, setNuevoFormulario] = useState({ nombre: '' })
   const [camposFormularioNuevo, setCamposFormularioNuevo] = useState([
     {
@@ -148,6 +171,7 @@ function App() {
   const [vistaSeccionFlujo, setVistaSeccionFlujo] = useState('operativos')
   const [vistaPanelFlujo, setVistaPanelFlujo] = useState('disponibles')
   const [plantillasMenuFlujo, setPlantillasMenuFlujo] = useState([])
+  /** Total de plantillas en menú (Operativos + Flota) para el rol; evita mensajes erróneos al cambiar de pestaña. */
   const [actividadesFlujoActivas, setActividadesFlujoActivas] = useState([])
   const [actividadesFlujoSeguimiento, setActividadesFlujoSeguimiento] = useState([])
   const [actividadesFlujoHistorial, setActividadesFlujoHistorial] = useState([])
@@ -166,6 +190,10 @@ function App() {
   const [plantillasBorrador, setPlantillasBorrador] = useState([])
   const [plantillasPublicadas, setPlantillasPublicadas] = useState([])
   const [vistaAdminFlujos, setVistaAdminFlujos] = useState('diseno')
+  const [adminVistaFlujoPlantillaId, setAdminVistaFlujoPlantillaId] = useState('')
+  const [adminVistaFlujoPasos, setAdminVistaFlujoPasos] = useState([])
+  const [adminVistaFlujoCargando, setAdminVistaFlujoCargando] = useState(false)
+  const [adminVistaFlujoError, setAdminVistaFlujoError] = useState('')
   const [actividadFlujoExpandidaId, setActividadFlujoExpandidaId] = useState('')
   const [etapasPorActividadFlujo, setEtapasPorActividadFlujo] = useState({})
   const [respuestasPasoFlujo, setRespuestasPasoFlujo] = useState({})
@@ -186,11 +214,32 @@ function App() {
     [tareasCampo, formularios.length]
   )
 
+  const todasPlantillasAdminFlujo = useMemo(
+    () =>
+      [
+        ...plantillasPublicadas.map((p) => ({ ...p, estadoPlantilla: 'PUBLICADA' })),
+        ...plantillasBorrador.map((p) => ({ ...p, estadoPlantilla: 'BORRADOR' })),
+      ].sort((a, b) => String(a.titulo || '').localeCompare(String(b.titulo || ''), 'es')),
+    [plantillasPublicadas, plantillasBorrador]
+  )
+
+  const plantillaAdminVistaSeleccionada = useMemo(
+    () => todasPlantillasAdminFlujo.find((p) => String(p.id) === String(adminVistaFlujoPlantillaId)),
+    [todasPlantillasAdminFlujo, adminVistaFlujoPlantillaId]
+  )
+
   useEffect(() => {
     if (token) {
       cargarDatos()
     }
-  }, [token])
+  }, [token, rolesUsuario])
+
+  useEffect(() => {
+    if (!token || !rolesUsuario.length) return
+    if (!esAdmin && (moduloActivo === 'inventario' || moduloActivo === 'formularios')) {
+      setModuloActivo('dashboard')
+    }
+  }, [token, rolesUsuario.length, esAdmin, moduloActivo])
 
   useEffect(() => {
     if (!token) return undefined
@@ -264,10 +313,21 @@ function App() {
         throw new Error('Credenciales inválidas')
       }
       const data = await respuesta.json()
+      const roles = data.roles || []
       setToken(data.token)
-      setRolesUsuario(data.roles || [])
-      localStorage.setItem('erp_token', data.token)
-      localStorage.setItem('erp_roles', JSON.stringify(data.roles || []))
+      setRolesUsuario(roles)
+      const rolesJson = JSON.stringify(roles)
+      if (mantenerSesionLogin) {
+        localStorage.setItem('erp_token', data.token)
+        localStorage.setItem('erp_roles', rolesJson)
+        sessionStorage.removeItem('erp_token')
+        sessionStorage.removeItem('erp_roles')
+      } else {
+        sessionStorage.setItem('erp_token', data.token)
+        sessionStorage.setItem('erp_roles', rolesJson)
+        localStorage.removeItem('erp_token')
+        localStorage.removeItem('erp_roles')
+      }
     } catch (error) {
       setMensajeError(error.message)
     }
@@ -276,6 +336,8 @@ function App() {
   const cerrarSesion = () => {
     localStorage.removeItem('erp_token')
     localStorage.removeItem('erp_roles')
+    sessionStorage.removeItem('erp_token')
+    sessionStorage.removeItem('erp_roles')
     setToken('')
     setRolesUsuario([])
     setPlantas([])
@@ -305,6 +367,11 @@ function App() {
   }
 
   const irAModulo = (modulo) => {
+    if (!esAdmin && (modulo === 'inventario' || modulo === 'formularios')) {
+      setModuloActivo('dashboard')
+      setMenuMovilAbierto(false)
+      return
+    }
     setModuloActivo(modulo)
     setMenuMovilAbierto(false)
     if (modulo === 'inventario') {
@@ -317,51 +384,81 @@ function App() {
 
   const cargarDatos = async () => {
     try {
-      const [resPlantas, resInventario, resFormularios, resCatalogosInv] = await Promise.all([
-        fetch(`${API_URL}/plantas`, { headers: cabeceras() }),
-        fetch(`${API_URL}/inventario`, { headers: cabeceras() }),
-        fetch(`${API_URL}/formularios`, { headers: cabeceras() }),
-        fetch(`${API_URL}/inventarios/catalogos`, { headers: cabeceras() }),
-      ])
-      if ([resPlantas, resInventario, resFormularios, resCatalogosInv].some((r) => r.status === 401)) {
+      const admin = rolesUsuario.includes('ADMINISTRADOR')
+      const operador =
+        rolesUsuario.includes('TECNICO') ||
+        rolesUsuario.includes('SUPERVISOR') ||
+        rolesUsuario.includes('COMERCIAL') ||
+        rolesUsuario.includes('BODEGA') ||
+        rolesUsuario.includes('COMPRAS')
+      const cargarInventarioYCatalogos = admin || operador
+
+      if (cargarInventarioYCatalogos) {
+        const [resPlantas, resInventario, resCatalogosInv] = await Promise.all([
+          fetch(`${API_URL}/plantas`, { headers: cabeceras() }),
+          fetch(`${API_URL}/inventario`, { headers: cabeceras() }),
+          fetch(`${API_URL}/inventarios/catalogos`, { headers: cabeceras() }),
+        ])
+        if ([resPlantas, resInventario, resCatalogosInv].some((r) => r.status === 401)) {
+          cerrarSesion()
+          setMensajeError('Sesión expirada, inicia sesión de nuevo')
+          return
+        }
+        const rawP = await resPlantas.json()
+        const rawI = await resInventario.json()
+        setPlantas(Array.isArray(rawP) ? rawP : [])
+        setInventario(Array.isArray(rawI) ? rawI : [])
+        if (resCatalogosInv.ok) {
+          try {
+            const rawCat = await resCatalogosInv.json()
+            setCatalogosInventarioLista(Array.isArray(rawCat) ? rawCat : [])
+          } catch {
+            setCatalogosInventarioLista([])
+          }
+        } else {
+          setCatalogosInventarioLista([])
+        }
+      } else {
+        setPlantas([])
+        setInventario([])
+        setCatalogosInventarioLista([])
+      }
+
+      if (admin) {
+        const resFormularios = await fetch(`${API_URL}/formularios`, { headers: cabeceras() })
+        if (resFormularios.status === 401) {
+          cerrarSesion()
+          setMensajeError('Sesión expirada, inicia sesión de nuevo')
+          return
+        }
+        const rawF = await resFormularios.json()
+        if (!resFormularios.ok) {
+          setFormularios([])
+          setMensajeError(`No se pudieron cargar formularios (${resFormularios.status})`)
+        } else {
+          setFormularios(Array.isArray(rawF) ? rawF : [])
+        }
+        const resRespuestas = await fetch(`${API_URL}/formularios/respuestas`, { headers: cabeceras() })
+        if (resRespuestas.ok) {
+          const rawR = await resRespuestas.json()
+          setRespuestasFormularios(Array.isArray(rawR) ? rawR : [])
+        } else {
+          setRespuestasFormularios([])
+        }
+      } else {
+        setFormularios([])
+        setRespuestasFormularios([])
+      }
+      const resTareasCampo = await fetch(`${API_URL}/campo/tareas`, { headers: cabeceras() })
+      if (resTareasCampo.status === 401) {
         cerrarSesion()
         setMensajeError('Sesión expirada, inicia sesión de nuevo')
         return
       }
-      const rawP = await resPlantas.json()
-      const rawI = await resInventario.json()
-      const rawF = await resFormularios.json()
-      setPlantas(Array.isArray(rawP) ? rawP : [])
-      setInventario(Array.isArray(rawI) ? rawI : [])
-      if (resCatalogosInv.ok) {
-        try {
-          const rawCat = await resCatalogosInv.json()
-          setCatalogosInventarioLista(Array.isArray(rawCat) ? rawCat : [])
-        } catch {
-          setCatalogosInventarioLista([])
-        }
-      } else {
-        setCatalogosInventarioLista([])
-      }
-      if (!resFormularios.ok) {
-        setFormularios([])
-        setMensajeError(`No se pudieron cargar formularios (${resFormularios.status})`)
-      } else {
-        setFormularios(Array.isArray(rawF) ? rawF : [])
-      }
-      const resRespuestas = await fetch(`${API_URL}/formularios/respuestas`, { headers: cabeceras() })
-      if (resRespuestas.ok) {
-        const rawR = await resRespuestas.json()
-        setRespuestasFormularios(Array.isArray(rawR) ? rawR : [])
-      } else {
-        setRespuestasFormularios([])
-      }
-      const resTareasCampo = await fetch(`${API_URL}/campo/tareas`, { headers: cabeceras() })
       if (resTareasCampo.ok) {
         const rawT = await resTareasCampo.json()
         setTareasCampo(Array.isArray(rawT) ? rawT : [])
       }
-      // cargar usuarios solo si el rol incluye ADMINISTRADOR
       if (rolesUsuario.includes('ADMINISTRADOR')) {
         const resUsuarios = await fetch(`${API_URL}/usuarios`, { headers: cabeceras() })
         if (resUsuarios.ok) {
@@ -370,6 +467,8 @@ function App() {
           setUsuarios([])
           setMensajeError(`Error al cargar usuarios (${resUsuarios.status})`)
         }
+      } else {
+        setUsuarios([])
       }
     } catch {
       setMensajeError('No se pudo conectar con el backend')
@@ -431,11 +530,129 @@ function App() {
         setMensajeError(`No se pudo guardar el equipo (${r.status}) ${detalle}`.trim())
         return
       }
-      setNuevoEquipo({ nombre: '', serial: '', responsable: '', estado: 'ACTIVO', ubicacion: '' })
+      setNuevoEquipo({ nombre: '', serial: '', responsable: '', estado: 'ACTIVO', ubicacion: '', cantidad: 1 })
       await cargarDatos()
     } catch {
       setMensajeError('No se pudo conectar con el servidor al guardar el equipo')
     }
+  }
+
+  const ejecutarImportacionInventario = async (e) => {
+    const input = e.target
+    const file = input?.files?.[0]
+    if (!file) return
+    setMensajeError('')
+    flushSync(() => setImportandoInventario(true))
+    try {
+      const { filas, advertencias } = await parseArchivoInventarioHerramientas(file)
+      if (!filas.length) {
+        setMensajeError('No se encontraron filas con código y descripción en el archivo.')
+        return
+      }
+      const r = await fetch(`${API_URL}/inventario/acciones/importar`, {
+        method: 'POST',
+        headers: cabeceras(),
+        body: JSON.stringify({ filas }),
+      })
+      let resJson = {}
+      try {
+        resJson = await r.json()
+      } catch {
+        /* vacío */
+      }
+      if (!r.ok) {
+        const detalle = resJson.mensaje || resJson.message || resJson.error || JSON.stringify(resJson)
+        setMensajeError(`No se pudo importar (${r.status}) ${detalle}`.trim())
+        return
+      }
+      const { creados = 0, actualizados = 0, ignorados = 0, errores = [] } = resJson
+      const partes = [`Importación lista: ${creados} nuevos, ${actualizados} actualizados, ${ignorados} filas vacías omitidas`]
+      if (errores.length) {
+        partes.push(`Detalles: ${errores.slice(0, 8).join(' · ')}${errores.length > 8 ? '…' : ''}`)
+      }
+      if (advertencias.length) {
+        partes.push(advertencias.slice(0, 3).join(' '))
+      }
+      window.alert(partes.join('\n\n'))
+      await cargarDatos()
+    } catch (err) {
+      setMensajeError(err?.message || 'Error al leer o importar el archivo')
+    } finally {
+      setImportandoInventario(false)
+      if (input) input.value = ''
+    }
+  }
+
+  const abrirSelectorImportHerramientas = () => {
+    const el = inputImportHerramientasRef.current
+    if (!el || importandoInventario) return
+    el.value = ''
+    el.click()
+  }
+
+  const importarItemsCatalogoConArchivo = async (catalogoIdNum, file) => {
+    const { filas, advertencias } = await parseArchivoInventarioHerramientas(file)
+    if (!filas.length) {
+      throw new Error('No se encontraron filas con código y descripción en el archivo.')
+    }
+    const r = await fetch(`${API_URL}/inventarios/catalogos/${catalogoIdNum}/acciones/importar`, {
+      method: 'POST',
+      headers: cabeceras(),
+      body: JSON.stringify({ filas }),
+    })
+    let resJson = {}
+    try {
+      resJson = await r.json()
+    } catch {
+      /* vacío */
+    }
+    if (!r.ok) {
+      const detalle = resJson.mensaje || resJson.message || resJson.error || JSON.stringify(resJson)
+      throw new Error(`No se pudo importar (${r.status}) ${detalle}`.trim())
+    }
+    const { creados = 0, actualizados = 0, ignorados = 0, errores = [] } = resJson
+    const partes = [`Importación lista: ${creados} nuevos, ${actualizados} actualizados, ${ignorados} filas vacías omitidas`]
+    if (errores.length) {
+      partes.push(`Detalles: ${errores.slice(0, 8).join(' · ')}${errores.length > 8 ? '…' : ''}`)
+    }
+    if (advertencias.length) {
+      partes.push(advertencias.slice(0, 3).join(' '))
+    }
+    window.alert(partes.join('\n\n'))
+    return resJson
+  }
+
+  const ejecutarImportacionInventarioCatalogo = async (e) => {
+    const input = e.target
+    const file = input?.files?.[0]
+    if (!file || !catalogoActivoId) return
+    setMensajeError('')
+    flushSync(() => setImportandoInventario(true))
+    try {
+      await importarItemsCatalogoConArchivo(Number(catalogoActivoId), file)
+      await cargarItemsCatalogoSeleccionado(catalogoActivoId)
+      invalidarCacheEndpointCatalogo(`/inventarios/catalogos/${catalogoActivoId}/items`)
+      await cargarDatos()
+    } catch (err) {
+      setMensajeError(err?.message || 'Error al leer o importar el archivo')
+    } finally {
+      setImportandoInventario(false)
+      if (input) input.value = ''
+    }
+  }
+
+  const abrirSelectorImportCatalogoCustom = () => {
+    const el = inputImportCatalogoCustomRef.current
+    if (!el || importandoInventario || !catalogoActivoId) return
+    el.value = ''
+    el.click()
+  }
+
+  const abrirSelectorArchivoCrearCatalogo = () => {
+    const el = inputArchivoCrearCatalogoRef.current
+    if (!el || importandoInventario) return
+    el.value = ''
+    el.click()
   }
 
   const invalidarCacheEndpointCatalogo = (endpointRelativo) => {
@@ -509,10 +726,31 @@ function App() {
       } catch {
         creado = {}
       }
+      const archivoTrasCrear = archivoOpcionalAlCrearCatalogoRef.current
+      archivoOpcionalAlCrearCatalogoRef.current = null
+      setNombreArchivoPendienteCrearCatalogo('')
+      if (inputArchivoCrearCatalogoRef.current) {
+        inputArchivoCrearCatalogoRef.current.value = ''
+      }
+
       setNuevoInventarioNombre('')
       setColumnasNuevoInventario({ serial: true, responsable: true, ubicacion: true, estado: true })
       setColumnasPersonalizadasNuevoInventario([])
       await cargarDatos()
+
+      if (creado?.id != null && archivoTrasCrear) {
+        flushSync(() => setImportandoInventario(true))
+        try {
+          await importarItemsCatalogoConArchivo(Number(creado.id), archivoTrasCrear)
+          invalidarCacheEndpointCatalogo(`/inventarios/catalogos/${creado.id}/items`)
+          await cargarDatos()
+        } catch (err) {
+          setMensajeError(err?.message || 'El inventario se creó pero falló la importación del archivo.')
+        } finally {
+          setImportandoInventario(false)
+        }
+      }
+
       if (creado?.id != null) {
         const sid = String(creado.id)
         setInventarioVerSeleccion(`catalog:${sid}`)
@@ -799,22 +1037,31 @@ function App() {
       const rol = String(p.menuInicioRol || 'TECNICO').toUpperCase()
       return rolesUsuario.includes(rol)
     }
-    const sec = flota ? 'FLOTA' : 'OPERATIVOS'
+    const filtrarMenuOperativos = (raw) => {
+      const arr = Array.isArray(raw) ? raw : []
+      return arr.filter((t) => (t.seccionPanel || 'OPERATIVOS') !== 'FLOTA').filter(menuVisibleParaMisRoles)
+    }
+    const filtrarMenuFlota = (raw) => {
+      const arr = Array.isArray(raw) ? raw : []
+      return arr.filter((t) => (t.seccionPanel || 'OPERATIVOS') === 'FLOTA').filter(menuVisibleParaMisRoles)
+    }
     try {
-      const [rMenu, rAct, rSeg, rHist] = await Promise.all([
-        fetch(`${API_URL}/campo/flujos/menu?seccion=${encodeURIComponent(sec)}`, { headers: cabeceras() }),
+      const [rMenuOp, rMenuFlota, rAct, rSeg, rHist] = await Promise.all([
+        fetch(`${API_URL}/campo/flujos/menu?seccion=${encodeURIComponent('OPERATIVOS')}`, { headers: cabeceras() }),
+        fetch(`${API_URL}/campo/flujos/menu?seccion=${encodeURIComponent('FLOTA')}`, { headers: cabeceras() }),
         fetch(`${API_URL}/campo/flujos/mis-actividades/activas`, { headers: cabeceras() }),
         fetch(`${API_URL}/campo/flujos/mis-actividades/seguimiento`, { headers: cabeceras() }),
         fetch(`${API_URL}/campo/flujos/mis-actividades/historial`, { headers: cabeceras() }),
       ])
-      if (rMenu.ok) {
-        const raw = await rMenu.json()
-        setPlantillasMenuFlujo(
-          Array.isArray(raw) ? raw.filter(pasaSeccion).filter(menuVisibleParaMisRoles) : []
-        )
-      } else {
-        setPlantillasMenuFlujo([])
+      let listOp = []
+      let listFlota = []
+      if (rMenuOp.ok) {
+        listOp = filtrarMenuOperativos(await rMenuOp.json())
       }
+      if (rMenuFlota.ok) {
+        listFlota = filtrarMenuFlota(await rMenuFlota.json())
+      }
+      setPlantillasMenuFlujo(flota ? listFlota : listOp)
       if (rAct.ok) {
         const raw = await rAct.json()
         setActividadesFlujoActivas(Array.isArray(raw) ? raw.filter(pasaSeccion) : [])
@@ -1576,6 +1823,31 @@ function App() {
     }
   }
 
+  const cargarPasosVistaAdminFlujo = async (plantillaId) => {
+    if (!plantillaId) {
+      setAdminVistaFlujoPasos([])
+      return
+    }
+    setAdminVistaFlujoCargando(true)
+    setAdminVistaFlujoError('')
+    try {
+      const r = await fetch(`${API_URL}/campo/flujos/plantillas/${plantillaId}/pasos`, { headers: cabeceras() })
+      if (!r.ok) {
+        setAdminVistaFlujoError(`No se pudieron cargar los pasos (${r.status}).`)
+        setAdminVistaFlujoPasos([])
+        return
+      }
+      const x = await r.json()
+      const lista = Array.isArray(x) ? x : []
+      setAdminVistaFlujoPasos([...lista].sort((a, b) => (a.orden || 0) - (b.orden || 0)))
+    } catch {
+      setAdminVistaFlujoError('Error de red al cargar los pasos.')
+      setAdminVistaFlujoPasos([])
+    } finally {
+      setAdminVistaFlujoCargando(false)
+    }
+  }
+
   const crearPlantillaFlujoSubmit = async (e) => {
     e.preventDefault()
     setMensajeError('')
@@ -1664,12 +1936,33 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduloActivo, esAdmin, token])
 
+  useEffect(() => {
+    if (vistaAdminFlujos !== 'vista' || !esAdmin) return
+    if (adminVistaFlujoPlantillaId) return
+    if (todasPlantillasAdminFlujo.length > 0) {
+      setAdminVistaFlujoPlantillaId(String(todasPlantillasAdminFlujo[0].id))
+    }
+  }, [vistaAdminFlujos, esAdmin, todasPlantillasAdminFlujo, adminVistaFlujoPlantillaId])
+
+  useEffect(() => {
+    if (moduloActivo !== 'flujos' || !esAdmin || vistaAdminFlujos !== 'vista' || !adminVistaFlujoPlantillaId) return
+    void cargarPasosVistaAdminFlujo(adminVistaFlujoPlantillaId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduloActivo, esAdmin, vistaAdminFlujos, adminVistaFlujoPlantillaId])
+
   const renderContenido = () => {
     if (moduloActivo === 'dashboard') {
       if (esOperadorFlujo) {
+        const hayFlujosEnMenu = plantillasMenuFlujo.length > 0
+        const hayAccesoPedidoComercial = esComercial
+        const mostrarEstadoVacioDisponibles = !hayFlujosEnMenu && !hayAccesoPedidoComercial
+
         return (
-          <section className="panel-dashboard-tecnico panel-flujos-usuario">
-            <div className="tabs-sub-tecnico">
+          <section className="panel-dashboard-tecnico panel-flujos-usuario dash-canvas dash-canvas--operador">
+            <header className="flujos-operador-cabecera">
+              <h2 className="flujos-operador-titulo">Flujos y actividades</h2>
+            </header>
+            <div className="tabs-sub-tecnico flujos-tabs-nivel-1">
               <button
                 type="button"
                 className={vistaSeccionFlujo === 'operativos' ? 'btn-tab-sub-tecnico activo' : 'btn-tab-sub-tecnico'}
@@ -1685,7 +1978,7 @@ function App() {
                 Flota
               </button>
             </div>
-            <div className="tabs-dashboard-admin">
+            <div className="tabs-dashboard-admin flujos-tabs-nivel-2">
               <button
                 type="button"
                 className={vistaPanelFlujo === 'disponibles' ? 'btn-tab-admin activo' : 'btn-tab-admin'}
@@ -1710,29 +2003,54 @@ function App() {
               </button>
             </div>
             {vistaPanelFlujo === 'disponibles' && (
-              <div className="grid-actividades-tecnico">
-                {esComercial && (
-                  <button
-                    type="button"
-                    className="tarjeta-actividad-tecnico"
-                    onClick={() => iniciarPedidoComercial()}
-                  >
-                    <span className="tarjeta-actividad-titulo">Pedido comercial (flujo fijo)</span>
-                    <span className="tarjeta-actividad-hint">Crear pedido e iniciar en Bodega</span>
-                  </button>
+              <div className="flujos-disponibles-bloque">
+                <div className="grid-actividades-tecnico">
+                  {esComercial && (
+                    <button
+                      type="button"
+                      className="tarjeta-actividad-tecnico tarjeta-actividad-tecnico--comercial"
+                      onClick={() => iniciarPedidoComercial()}
+                    >
+                      <span className="tarjeta-actividad-ico" aria-hidden>
+                        <span className="material-symbols-outlined">{'shopping_cart'}</span>
+                      </span>
+                      <span className="tarjeta-actividad-textos">
+                        <span className="tarjeta-actividad-titulo">Pedido comercial (flujo fijo)</span>
+                        <span className="tarjeta-actividad-hint">Crear pedido e iniciar en Bodega</span>
+                      </span>
+                      <span className="material-symbols-outlined tarjeta-actividad-flecha" aria-hidden>
+                        {'arrow_forward'}
+                      </span>
+                    </button>
+                  )}
+                  {plantillasMenuFlujo.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="tarjeta-actividad-tecnico"
+                      onClick={() => iniciarFlujoDesdeMenu(p.id, p.titulo)}
+                    >
+                      <span className="tarjeta-actividad-ico" aria-hidden>
+                        <span className="material-symbols-outlined">{'account_tree'}</span>
+                      </span>
+                      <span className="tarjeta-actividad-textos">
+                        <span className="tarjeta-actividad-titulo">{p.titulo}</span>
+                        <span className="tarjeta-actividad-hint">Iniciar nueva ejecución</span>
+                      </span>
+                      <span className="material-symbols-outlined tarjeta-actividad-flecha" aria-hidden>
+                        {'arrow_forward'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {mostrarEstadoVacioDisponibles && (
+                  <div className="flujos-vacio-estado" role="status">
+                    <span className="material-symbols-outlined flujos-vacio-estado-ico" aria-hidden>
+                      {'inventory_2'}
+                    </span>
+                    <p className="flujos-vacio-estado-titulo">No hay flujos en el menú</p>
+                  </div>
                 )}
-                {plantillasMenuFlujo.length === 0 && <p>No hay flujos disponibles en esta sección.</p>}
-                {plantillasMenuFlujo.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className="tarjeta-actividad-tecnico"
-                    onClick={() => iniciarFlujoDesdeMenu(p.id, p.titulo)}
-                  >
-                    <span className="tarjeta-actividad-titulo">{p.titulo}</span>
-                    <span className="tarjeta-actividad-hint">Iniciar nueva ejecución</span>
-                  </button>
-                ))}
               </div>
             )}
 
@@ -1742,9 +2060,7 @@ function App() {
                   <p>No tienes actividades en esta sección.</p>
                 )}
                 {actividadesFlujoActivas.length > 0 && (
-                  <h4 className="titulo-seccion titulo-seccion--bloque">
-                    En tu turno (puedes completar el paso)
-                  </h4>
+                  <h4 className="titulo-seccion titulo-seccion--bloque">En tu turno</h4>
                 )}
                 {actividadesFlujoActivas.map((t) => {
                   const etapas = [...(etapasPorActividadFlujo[t.id] || [])].sort((a, b) => (a.orden || 0) - (b.orden || 0))
@@ -1843,9 +2159,6 @@ function App() {
                                 setRespuestasPasoFlujo((prev) => ({ ...prev, firmaSistema: firmaDataUrl }))
                               }
                             />
-                            <small className="texto-ayuda-tecnico">
-                              Firma con el dedo (táctil) o con el mouse (PC). Este campo siempre es obligatorio.
-                            </small>
                           </div>
                           <button type="button" className="btn-completar-paso-flujo" onClick={() => enviarPasoFlujo(t.id, paso.id)}>
                             Completar paso y continuar
@@ -1857,9 +2170,7 @@ function App() {
                 })}
                 {actividadesFlujoSeguimiento.length > 0 && (
                   <>
-                    <h4 className="titulo-seccion titulo-seccion--separado">
-                      Seguimiento (solo consulta; no es tu turno)
-                    </h4>
+                    <h4 className="titulo-seccion titulo-seccion--separado">Seguimiento</h4>
                     {actividadesFlujoSeguimiento.map((t) => {
                       const etapas = [...(etapasPorActividadFlujo[t.id] || [])].sort((a, b) => (a.orden || 0) - (b.orden || 0))
                       const pasoActual = etapas.find((e) => !e.completada)
@@ -1922,19 +2233,55 @@ function App() {
           t.estado === 'PENDIENTE' || t.estado === 'EN_PROCESO' || t.estado === 'PENDIENTE_APROBACION'
         )
         const finalizadasAdmin = tareasCampo.filter((t) => t.estado === 'TERMINADA' || t.estado === 'CANCELADA')
+        const totalTareasCampo = tareasCampo.length
+        const terminadasCampo = tareasCampo.filter((t) => t.estado === 'TERMINADA').length
+        const pctCompletadas =
+          totalTareasCampo > 0 ? Math.round((terminadasCampo / totalTareasCampo) * 1000) / 10 : null
         return (
-          <section>
-            <div className="tarjetas-grid tarjetas-kpi">
+          <div className="dash-canvas">
+            <section className="dash-hero">
+              <h2 className="dash-hero-titulo">Sistema ERP de Mantenimiento</h2>
+              <p className="dash-hero-sub">Visión general operativa y gestión de flujo de trabajo.</p>
+            </section>
+            <div className="dash-bento">
               {resumen.map((item) => (
                 <article
                   key={item.titulo}
                   className="tarjeta tarjeta-kpi"
                   data-kpi={item.titulo === 'Flujos' ? 'flujos' : 'formularios'}
                 >
-                  <h3>{item.titulo}</h3>
-                  <p className="tarjeta-kpi-valor">{item.valor}</p>
+                  <div className="tarjeta-kpi-textos">
+                    <h3>{item.titulo}</h3>
+                    <p className="tarjeta-kpi-valor">{item.valor}</p>
+                  </div>
+                  <div
+                    className={`tarjeta-kpi-icono ${item.titulo === 'Flujos' ? '' : 'tarjeta-kpi-icono--acento'}`}
+                  >
+                    <span className="material-symbols-outlined" aria-hidden>
+                      {item.titulo === 'Flujos' ? 'account_tree' : 'dynamic_form'}
+                    </span>
+                  </div>
                 </article>
               ))}
+              <article className="tarjeta tarjeta-kpi tarjeta-kpi-destacada dash-kpi-wide">
+                <div className="tarjeta-kpi-textos">
+                  <p className="tarjeta-kpi-etiqueta-blanca">Tareas completadas</p>
+                  <h3 className="tarjeta-kpi-valor-blanco">
+                    {pctCompletadas != null ? `${pctCompletadas}%` : '—'}
+                  </h3>
+                  <p className="tarjeta-kpi-hint-blanco">
+                    <span className="material-symbols-outlined" aria-hidden>
+                      trending_up
+                    </span>
+                    {totalTareasCampo > 0
+                      ? `${terminadasCampo} de ${totalTareasCampo} tareas en el registro`
+                      : 'Sin tareas registradas aún'}
+                  </p>
+                </div>
+                <div className="tarjeta-kpi-deco" aria-hidden>
+                  <span className="material-symbols-outlined">{'analytics'}</span>
+                </div>
+              </article>
             </div>
             <div className="tabs-dashboard-admin">
               <button
@@ -1956,7 +2303,7 @@ function App() {
             </div>
 
             {vistaDashboardAdmin === 'pendientes' && (
-              <div className="panel-seccion">
+              <div className="panel-seccion dash-panel-tabla">
                 <div className="panel-seccion-header">
                   <h3>Registro de tareas pendientes</h3>
                   <span>{pendientesAdmin.length} tareas</span>
@@ -1976,7 +2323,7 @@ function App() {
             )}
 
             {vistaDashboardAdmin === 'finalizadas' && (
-              <div className="panel-seccion">
+              <div className="panel-seccion dash-panel-tabla">
                 <div className="panel-seccion-header">
                   <h3>Registro de tareas finalizadas/canceladas</h3>
                   <span>{finalizadasAdmin.length} tareas</span>
@@ -2004,7 +2351,7 @@ function App() {
             )}
 
             {vistaDashboardAdmin === 'finalizadas' && informeRespuestaSeleccionada && (
-              <div className="panel-seccion">
+              <div className="panel-seccion dash-panel-tabla">
                 <div className="panel-seccion-header">
                   <h3>Informe de tarea #{informeRespuestaSeleccionada.tarea.id}</h3>
                   <span>{informeRespuestaSeleccionada.tarea.titulo}</span>
@@ -2027,21 +2374,59 @@ function App() {
                 )}
               </div>
             )}
-          </section>
+
+            <div className="dash-decor-grid">
+              <div className="dash-decor-banner">
+                <div className="dash-decor-banner-inner">
+                  <h4>Monitoreo en tiempo real</h4>
+                  <p>Gestiona inventario, flujos y formularios desde un único panel operativo.</p>
+                </div>
+              </div>
+              <div className="dash-notas">
+                <h4>Notas rápidas</h4>
+                <div className="dash-nota">
+                  <strong>Operación</strong>
+                  <p>Revisa tareas pendientes y asignaciones antes del cierre del turno.</p>
+                </div>
+                <div className="dash-nota dash-nota--sec">
+                  <strong>Recordatorio</strong>
+                  <p>Actualiza datos de inventario y respuestas de formularios con la frecuencia definida por tu proceso.</p>
+                </div>
+              </div>
+            </div>
+            <p className="dash-pie">
+              ERP Susequid © {new Date().getFullYear()} · instancia corporativa segura
+            </p>
+          </div>
         )
       }
       return (
-        <div className="tarjetas-grid tarjetas-kpi">
-          {resumen.map((item) => (
-            <article
-              key={item.titulo}
-              className="tarjeta tarjeta-kpi"
-              data-kpi={item.titulo === 'Flujos' ? 'flujos' : 'formularios'}
-            >
-              <h3>{item.titulo}</h3>
-              <p className="tarjeta-kpi-valor">{item.valor}</p>
-            </article>
-          ))}
+        <div className="dash-canvas">
+          <section className="dash-hero">
+            <h2 className="dash-hero-titulo">Resumen</h2>
+            <p className="dash-hero-sub">Indicadores del sistema disponibles para tu rol.</p>
+          </section>
+          <div className="dash-bento dash-bento--dos">
+            {resumen.map((item) => (
+              <article
+                key={item.titulo}
+                className="tarjeta tarjeta-kpi"
+                data-kpi={item.titulo === 'Flujos' ? 'flujos' : 'formularios'}
+              >
+                <div className="tarjeta-kpi-textos">
+                  <h3>{item.titulo}</h3>
+                  <p className="tarjeta-kpi-valor">{item.valor}</p>
+                </div>
+                <div
+                  className={`tarjeta-kpi-icono ${item.titulo === 'Flujos' ? '' : 'tarjeta-kpi-icono--acento'}`}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    {item.titulo === 'Flujos' ? 'account_tree' : 'dynamic_form'}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
       )
     }
@@ -2054,9 +2439,16 @@ function App() {
         <section className="modulo-flujos-admin">
           <div className="panel-seccion-header flujo-admin-cabecera">
             <h3>Flujos de actividades</h3>
-            <span>Diseña procesos por pasos, roles y formularios. Nada se publica hasta que lo confirmes.</span>
           </div>
           <div className="tabs-dashboard-admin">
+            <button
+              type="button"
+              className={vistaAdminFlujos === 'vista' ? 'btn-tab-admin activo' : 'btn-tab-admin'}
+              onClick={() => setVistaAdminFlujos('vista')}
+            >
+              <span className="tab-leading-dot tab-dot-emerald" aria-hidden="true" />
+              Vista del flujo
+            </button>
             <button
               type="button"
               className={vistaAdminFlujos === 'diseno' ? 'btn-tab-admin activo' : 'btn-tab-admin'}
@@ -2080,11 +2472,97 @@ function App() {
             </button>
           </div>
 
+          {vistaAdminFlujos === 'vista' && (
+            <div className="tarjeta-formulario flujo-vista-panel">
+              {todasPlantillasAdminFlujo.length === 0 ? null : (
+                <>
+                  <div className="flujo-vista-selector-row">
+                    <label htmlFor="sel-vista-flujo-admin">
+                      Plantilla
+                      <select
+                        id="sel-vista-flujo-admin"
+                        value={adminVistaFlujoPlantillaId}
+                        onChange={(e) => setAdminVistaFlujoPlantillaId(e.target.value)}
+                      >
+                        {todasPlantillasAdminFlujo.map((p) => (
+                          <option key={`pv-${p.id}-${p.estadoPlantilla}`} value={p.id}>
+                            {p.titulo} ({p.estadoPlantilla === 'PUBLICADA' ? 'Publicada' : 'Borrador'})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button type="button" className="btn-secundario" onClick={() => void cargarPasosVistaAdminFlujo(adminVistaFlujoPlantillaId)}>
+                      Actualizar pasos
+                    </button>
+                  </div>
+                  {plantillaAdminVistaSeleccionada && (
+                    <div className="flujo-vista-detalle">
+                      <h4 className="flujo-vista-detalle-titulo">{plantillaAdminVistaSeleccionada.titulo}</h4>
+                      {(plantillaAdminVistaSeleccionada.descripcion || '').trim() ? (
+                        <p className="flujo-vista-detalle-desc">{(plantillaAdminVistaSeleccionada.descripcion || '').trim()}</p>
+                      ) : null}
+                      <div className="flujo-vista-meta" role="list">
+                        <span
+                          className={`flujo-vista-chip ${plantillaAdminVistaSeleccionada.estadoPlantilla === 'BORRADOR' ? 'flujo-vista-chip--borrador' : ''}`}
+                          role="listitem"
+                        >
+                          {plantillaAdminVistaSeleccionada.estadoPlantilla === 'PUBLICADA' ? 'Publicada' : 'Borrador'}
+                        </span>
+                        <span className="flujo-vista-chip" role="listitem">
+                          Sección: {plantillaAdminVistaSeleccionada.seccionPanel || '—'}
+                        </span>
+                        <span className="flujo-vista-chip" role="listitem">
+                          Quién inicia: {plantillaAdminVistaSeleccionada.menuInicioRol || '—'}
+                        </span>
+                        <span className="flujo-vista-chip" role="listitem">
+                          Menú «Disponibles»: {plantillaAdminVistaSeleccionada.visibleEnMenuFlujo ? 'Sí' : 'No'}
+                        </span>
+                      </div>
+                      {adminVistaFlujoError ? <p className="texto-error">{adminVistaFlujoError}</p> : null}
+                      {adminVistaFlujoCargando ? <div className="flujo-vista-cargando" aria-busy="true" aria-label="Cargando" /> : null}
+                      {!adminVistaFlujoCargando && adminVistaFlujoPasos.length > 0 ? (
+                        <>
+                          <p className="flujo-vista-pipeline-titulo">Recorrido del flujo</p>
+                          <div className="flujo-pipeline" role="list">
+                            {adminVistaFlujoPasos.map((paso, idx) => (
+                              <div key={paso.id || idx} className="flujo-pipeline-wrap" role="presentation">
+                                <article className="flujo-pipeline-paso" role="listitem">
+                                  <div className="flujo-pipeline-paso-num">Paso {paso.orden ?? idx + 1}</div>
+                                  <div className="flujo-pipeline-paso-nombre">{paso.nombre || '—'}</div>
+                                  <div className="flujo-pipeline-paso-rol">Rol: {paso.rolResponsable || '—'}</div>
+                                  <div className="flujo-pipeline-paso-form">
+                                    Formulario: {paso.formulario?.nombre || '—'}
+                                  </div>
+                                </article>
+                                {idx < adminVistaFlujoPasos.length - 1 ? (
+                                  <span className="flujo-pipeline-arrow" aria-hidden="true">
+                                    →
+                                  </span>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                          <ul className="lista-etapas-flujo flujo-vista-lista-resumen">
+                            {adminVistaFlujoPasos.map((e) => (
+                              <li key={`lr-${e.id}`}>
+                                <span className="etapa-marca etapa-marca--pendiente">○</span> {e.nombre} — {e.rolResponsable}
+                                {e.formulario?.nombre ? ` · ${e.formulario.nombre}` : ''}
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {vistaAdminFlujos === 'diseno' && (
             <div className="tarjeta-formulario flujo-formulario-nuevo">
               <div className="flujo-seccion-titulo">
                 <h4>Nueva plantilla (borrador)</h4>
-                <span className="flujo-seccion-sub">Define el flujo y los pasos antes de publicar.</span>
               </div>
               <form className="formulario flujo-form-grid" onSubmit={crearPlantillaFlujoSubmit}>
                 <input
@@ -2094,14 +2572,11 @@ function App() {
                   required
                 />
                 <textarea
-                  placeholder="Descripción (opcional)"
+                  placeholder="Descripción"
                   value={nuevaPlantillaFlujo.descripcion}
                   onChange={(e) => setNuevaPlantillaFlujo({ ...nuevaPlantillaFlujo, descripcion: e.target.value })}
                   rows={2}
                 />
-                <p className="texto-ayuda-tecnico" style={{ marginTop: '-0.25rem' }}>
-                  Este flujo se crea como menú permanente: al publicarlo, quedará disponible para los roles definidos.
-                </p>
                 <label className="rol-checkbox">Sección del panel (técnico / supervisor)</label>
                 <div className="roles-grid">
                   <label className="rol-checkbox">
@@ -2134,16 +2609,7 @@ function App() {
                   <option value="SUPERVISOR">SUPERVISOR</option>
                   <option value="ADMINISTRADOR">ADMINISTRADOR</option>
                 </select>
-                <p className="texto-ayuda-tecnico" style={{ marginTop: '0.35rem' }}>
-                  En cada paso eliges qué rol lo hace; los demás solo lo verán en «Mis actividades» cuando sea su turno.
-                </p>
-                <p className="texto-ayuda-tecnico" style={{ marginTop: '0.25rem' }}>
-                  Se publicará visible en «Disponibles» automáticamente.
-                </p>
                 <h4 className="titulo-seccion">Pasos</h4>
-                <p className="texto-ayuda-tecnico" style={{ marginBottom: '0.75rem' }}>
-                  Debe existir al menos un paso con el rol elegido arriba (ese quedará primero). El resto sigue el orden de esta lista.
-                </p>
                 {pasosPlantillaFlujo.map((paso, idx) => (
                   <div key={idx} className="formulario flujo-paso-bloque">
                     <strong className="flujo-paso-numero">Paso {idx + 1}</strong>
@@ -2204,6 +2670,16 @@ function App() {
                   p.tipoVisibilidadFlujo || '—',
                   p.seccionPanel || '—',
                   <div key={`acc-bor-${p.id}`} className="acciones-usuario-admin">
+                    <button
+                      type="button"
+                      className="btn-secundario"
+                      onClick={() => {
+                        setVistaAdminFlujos('vista')
+                        setAdminVistaFlujoPlantillaId(String(p.id))
+                      }}
+                    >
+                      Ver flujo
+                    </button>
                     <button type="button" onClick={() => publicarPlantillaFlujo(p.id)}>Publicar</button>
                     <button type="button" className="btn-peligro" onClick={() => eliminarPlantillaFlujo(p.id)}>Eliminar</button>
                   </div>,
@@ -2224,7 +2700,19 @@ function App() {
                   p.visibleEnMenuFlujo ? 'Sí' : 'No',
                   p.menuInicioRol || '—',
                   p.seccionPanel || '—',
-                  <button key={`del-pub-${p.id}`} type="button" className="btn-peligro" onClick={() => eliminarPlantillaFlujo(p.id)}>Eliminar</button>,
+                  <div key={`acc-pub-${p.id}`} className="acciones-usuario-admin">
+                    <button
+                      type="button"
+                      className="btn-secundario"
+                      onClick={() => {
+                        setVistaAdminFlujos('vista')
+                        setAdminVistaFlujoPlantillaId(String(p.id))
+                      }}
+                    >
+                      Ver flujo
+                    </button>
+                    <button type="button" className="btn-peligro" onClick={() => eliminarPlantillaFlujo(p.id)}>Eliminar</button>
+                  </div>,
                 ])}
               />
             </div>
@@ -2236,8 +2724,8 @@ function App() {
     }
 
     if (moduloActivo === 'inventario') {
-      if (esTecnico) {
-        return <p>No tienes acceso a inventario.</p>
+      if (!esAdmin) {
+        return <p>Solo un usuario administrador puede gestionar inventarios.</p>
       }
       const etiquetasColumnaInventario = {
         nombre: 'Nombre',
@@ -2261,19 +2749,12 @@ function App() {
           {vistaInventario === 'menu' && (
             <div className="inventario-menu-inicio">
               <h2 className="inventario-menu-titulo">Inventario</h2>
-              <p className="texto-ayuda-tecnico inventario-menu-sub">Elige qué deseas hacer.</p>
               <div className="inventario-menu-grid">
                 <button type="button" className="inventario-menu-tarjeta" onClick={() => setVistaInventario('ver')}>
                   <span className="inventario-menu-tarjeta-titulo">Ver inventarios</span>
-                  <span className="inventario-menu-tarjeta-texto">
-                    Consulta plantas, herramientas y los inventarios que hayas creado. Selecciona cuál ver y administra su contenido.
-                  </span>
                 </button>
                 <button type="button" className="inventario-menu-tarjeta" onClick={() => setVistaInventario('crear')}>
                   <span className="inventario-menu-tarjeta-titulo">Crear inventario</span>
-                  <span className="inventario-menu-tarjeta-texto">
-                    Define un nuevo listado con nombre y las columnas que tendrá la tabla. Luego podrás cargar datos desde «Ver inventarios».
-                  </span>
                 </button>
               </div>
             </div>
@@ -2363,18 +2844,64 @@ function App() {
                     <h4>Herramientas</h4>
                     <span>{inventario.length} registradas</span>
                   </div>
+                  <div className="inventario-importar-bloque">
+                    <input
+                      ref={inputImportHerramientasRef}
+                      type="file"
+                      accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                      className="inventario-input-file-sr"
+                      tabIndex={-1}
+                      aria-hidden
+                      onChange={ejecutarImportacionInventario}
+                    />
+                    <button
+                      type="button"
+                      className="btn-secundario"
+                      disabled={importandoInventario}
+                      onClick={abrirSelectorImportHerramientas}
+                    >
+                      {importandoInventario ? 'Importando…' : 'Importar Excel / CSV'}
+                    </button>
+                    {importandoInventario ? (
+                      <p className="inventario-import-progreso" role="status">
+                        Leyendo archivo y enviando datos…
+                      </p>
+                    ) : null}
+                    <p className="inventario-importar-ayuda">
+                      Reconoce cabeceras en la primera fila: <strong>Elementos entregados</strong> (o descripción del bien),{' '}
+                      <strong>Identificación</strong> / código, y opcionalmente <strong>Nombre</strong> (responsable),{' '}
+                      <strong>Área de trabajo</strong> (ubicación) y cantidad. Si no hay columna de cantidad, se usa el número
+                      inicial del texto (ej. «2 hidrolavadora…» → 2). Si el código se repite en el archivo, se añade un sufijo
+                      automático. CSV en UTF-8.
+                    </p>
+                  </div>
                   <form className="formulario" onSubmit={guardarEquipo}>
                     <input placeholder="Nombre de herramienta/equipo" value={nuevoEquipo.nombre} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, nombre: e.target.value })} required />
-                    <input placeholder="Serial" value={nuevoEquipo.serial} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, serial: e.target.value })} required />
+                    <input placeholder="Código / serial (único)" value={nuevoEquipo.serial} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, serial: e.target.value })} required />
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      placeholder="Existencias"
+                      value={nuevoEquipo.cantidad ?? 1}
+                      onChange={(e) => {
+                        const n = parseInt(e.target.value, 10)
+                        setNuevoEquipo({
+                          ...nuevoEquipo,
+                          cantidad: Number.isFinite(n) && n >= 0 ? n : 0,
+                        })
+                      }}
+                    />
                     <input placeholder="Responsable" value={nuevoEquipo.responsable} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, responsable: e.target.value })} />
                     <input placeholder="Ubicación" value={nuevoEquipo.ubicacion} onChange={(e) => setNuevoEquipo({ ...nuevoEquipo, ubicacion: e.target.value })} />
                     <button type="submit">Guardar herramienta</button>
                   </form>
                   <TablaSimple
-                    columnas={['Nombre', 'Serial', 'Responsable', 'Estado', 'Ubicación', 'Acciones']}
+                    columnas={['Nombre', 'Código', 'Existencias', 'Responsable', 'Estado', 'Ubicación', 'Acciones']}
                     filas={inventario.map((i) => [
                       i.nombre,
                       i.serial,
+                      i.cantidad != null ? i.cantidad : 1,
                       i.responsable,
                       i.estado,
                       i.ubicacion,
@@ -2406,7 +2933,36 @@ function App() {
                   )}
                   {catalogoSeleccionadoMeta && (
                     <>
-                      <p className="inventario-seccion-titulo inventario-seccion-titulo-alta">Agregar ítem</p>
+                      <p className="inventario-seccion-titulo inventario-seccion-titulo-alta">Agregar ítems</p>
+                      <div className="inventario-importar-bloque">
+                        <input
+                          ref={inputImportCatalogoCustomRef}
+                          type="file"
+                          accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                          className="inventario-input-file-sr"
+                          tabIndex={-1}
+                          aria-hidden
+                          onChange={ejecutarImportacionInventarioCatalogo}
+                        />
+                        <button
+                          type="button"
+                          className="btn-secundario"
+                          disabled={importandoInventario || !catalogoActivoId}
+                          onClick={abrirSelectorImportCatalogoCustom}
+                        >
+                          {importandoInventario ? 'Importando…' : 'Importar Excel / CSV'}
+                        </button>
+                        {importandoInventario ? (
+                          <p className="inventario-import-progreso" role="status">
+                            Leyendo archivo y enviando datos…
+                          </p>
+                        ) : null}
+                        <p className="inventario-importar-ayuda">
+                          Código, descripción y existencias; se actualiza el ítem si el código ya existe en este inventario. Las cantidades
+                          se guardan en una columna personalizada tipo Existencias / Cantidad / Stock si el catálogo la tiene.
+                        </p>
+                      </div>
+                      <p className="inventario-seccion-titulo inventario-seccion-titulo-alta inventario-subtitulo-manual">Alta manual</p>
                       <form className="formulario inventario-form-alta" onSubmit={crearItemCatalogoAdmin}>
                         {colsInventarioCustom.includes('nombre') && (
                           <input
@@ -2589,8 +3145,47 @@ function App() {
                   </button>
                 </div>
                 </div>
+                <div className="inventario-importar-bloque inventario-importar-bloque-crear">
+                  <p className="inventario-seccion-titulo">Cargar ítems desde archivo (opcional)</p>
+                  <input
+                    ref={inputArchivoCrearCatalogoRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                    className="inventario-input-file-sr"
+                    tabIndex={-1}
+                    aria-hidden
+                    onChange={(ev) => {
+                      const f = ev.target.files?.[0] ?? null
+                      archivoOpcionalAlCrearCatalogoRef.current = f
+                      setNombreArchivoPendienteCrearCatalogo(f ? f.name : '')
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn-secundario"
+                    disabled={importandoInventario}
+                    onClick={abrirSelectorArchivoCrearCatalogo}
+                  >
+                    Elegir Excel / CSV
+                  </button>
+                  {nombreArchivoPendienteCrearCatalogo ? (
+                    <p className="inventario-archivo-seleccionado" role="status">
+                      Seleccionado: <strong>{nombreArchivoPendienteCrearCatalogo}</strong>. Presiona <strong>Crear inventario</strong> para
+                      crear el catálogo e importar las filas.
+                    </p>
+                  ) : null}
+                  <p className="inventario-importar-ayuda">
+                    Mismo formato que en herramientas: <strong>código</strong>, <strong>descripción</strong>, <strong>existencias</strong>. Al
+                    pulsar <strong>Crear inventario</strong>, primero se crea el catálogo y luego se importan las filas. Para guardar las
+                    cantidades, añade una columna personalizada llamada por ejemplo <strong>Existencias</strong> (o Cantidad / Stock); si no
+                    hay ninguna columna adecuada, igual se cargan código y descripción. También puedes dejar el archivo vacío y cargar ítems
+                    solo a mano después.
+                  </p>
+                </div>
                 <div className="inventario-accion-principal">
-                  <button type="submit">Crear inventario</button>
+                  <button type="submit" disabled={importandoInventario}>
+                    {importandoInventario ? 'Procesando…' : 'Crear inventario'}
+                  </button>
                 </div>
               </form>
             </div>
@@ -2612,10 +3207,7 @@ function App() {
                 <h4 id="modal-borrar-catalogo-titulo" className="modal-confirmacion-inventario-titulo">
                   Confirmar eliminación del inventario
                 </h4>
-                <p className="texto-ayuda-tecnico modal-confirmacion-inventario-texto">
-                  Esta acción elimina el catálogo y todos sus datos asociados. Es irreversible. Escribe tu contraseña de
-                  sesión para continuar.
-                </p>
+                <p className="modal-confirmacion-inventario-texto">Esta acción es irreversible.</p>
                 <label className="modal-confirmacion-inventario-label-clave" htmlFor="modal-borrar-catalogo-clave">
                   Contraseña
                 </label>
@@ -2661,8 +3253,8 @@ function App() {
     }
 
     if (moduloActivo === 'formularios') {
-      if (esTecnico) {
-        return <p>No tienes acceso a formularios.</p>
+      if (!esAdmin) {
+        return <p>Solo un usuario administrador puede gestionar formularios.</p>
       }
       return (
         <section>
@@ -2807,9 +3399,6 @@ function App() {
                             <option value="serial">Guardar valor: Serial</option>
                             <option value="nombre">Guardar valor: Nombre</option>
                           </select>
-                          <small className="texto-ayuda-tecnico">
-                            Se mostrarán automáticamente todos los registros del catálogo seleccionado.
-                          </small>
                         </>
                       )}
                       {(campo.origenOpciones || 'manual') === 'manual' && (
@@ -3030,15 +3619,155 @@ function App() {
 
   if (!token) {
     return (
-      <div className="contenedor-login">
-        <form className="tarjeta-login" onSubmit={login}>
-          <h1>ERP Susequid</h1>
-          <p>Inicia sesión para acceder a los módulos</p>
-          <input type="email" placeholder="Correo" value={correoLogin} onChange={(e) => setCorreoLogin(e.target.value)} required />
-          <input type="password" placeholder="Clave" value={claveLogin} onChange={(e) => setClaveLogin(e.target.value)} required />
-          <button type="submit">Entrar</button>
-          {mensajeError && <small className="texto-error">{mensajeError}</small>}
-        </form>
+      <div className="login-page">
+        <div className="login-page-gradient" aria-hidden />
+        <main className="login-shell">
+          <div className="login-brand">
+            <div className="login-brand-glow-a" aria-hidden />
+            <div className="login-brand-glow-b" aria-hidden />
+            <div className="login-brand-inner">
+              <div className="login-brand-logo">
+                <span className="material-symbols-outlined" aria-hidden>
+                  {'precision_manufacturing'}
+                </span>
+                <h1>ERP Susequid</h1>
+              </div>
+              <div>
+                <h2>
+                  Operaciones claras, <span className="login-brand-accent">datos unificados</span> para tu organización.
+                </h2>
+                <p className="login-brand-lead">
+                  Accede al panel de gestión: inventario, flujos, formularios y más en un solo entorno.
+                </p>
+              </div>
+            </div>
+            <div className="login-brand-card">
+              <div className="login-brand-card-row">
+                <div className="login-brand-card-icon">
+                  <span className="material-symbols-outlined">{'shield_person'}</span>
+                </div>
+                <div>
+                  <p className="login-brand-card-title">Acceso seguro</p>
+                  <p className="login-brand-card-sub">Sesión autenticada con token; cierra sesión al terminar en equipos compartidos.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="login-form-wrap">
+            <div className="login-movil-marca">
+              <span className="material-symbols-outlined" aria-hidden>
+                {'precision_manufacturing'}
+              </span>
+              <span>ERP Susequid</span>
+            </div>
+            <div className="login-form-inner">
+              <h3 className="login-form-titulo">Iniciar sesión</h3>
+              <p className="login-form-sub">Ingresa tus credenciales corporativas para continuar.</p>
+              <form className="login-form" onSubmit={login}>
+                <div className="login-field">
+                  <label htmlFor="login-correo">Correo institucional</label>
+                  <div className="login-input-wrap">
+                    <span className="material-symbols-outlined" aria-hidden>
+                      {'alternate_email'}
+                    </span>
+                    <input
+                      id="login-correo"
+                      name="correo"
+                      type="email"
+                      autoComplete="username"
+                      placeholder="nombre@empresa.com"
+                      value={correoLogin}
+                      onChange={(e) => setCorreoLogin(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="login-field">
+                  <div className="login-password-row">
+                    <label htmlFor="login-clave">Contraseña</label>
+                    <button
+                      type="button"
+                      className="login-enlace-sutil"
+                      onClick={() =>
+                        window.alert('Para restablecer la clave, contacta al administrador del sistema.')
+                      }
+                    >
+                      ¿Olvidaste tu clave?
+                    </button>
+                  </div>
+                  <div className="login-input-wrap login-input-wrap--clave">
+                    <span className="material-symbols-outlined" aria-hidden>
+                      {'lock'}
+                    </span>
+                    <input
+                      id="login-clave"
+                      name="clave"
+                      type={mostrarClaveLogin ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      placeholder="••••••••••••"
+                      value={claveLogin}
+                      onChange={(e) => setClaveLogin(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="login-toggle-clave"
+                      onClick={() => setMostrarClaveLogin((v) => !v)}
+                      aria-label={mostrarClaveLogin ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      <span className="material-symbols-outlined">
+                        {mostrarClaveLogin ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+                <div className="login-check-row">
+                  <input
+                    id="login-mantener"
+                    type="checkbox"
+                    checked={mantenerSesionLogin}
+                    onChange={(e) => setMantenerSesionLogin(e.target.checked)}
+                  />
+                  <label htmlFor="login-mantener">Mantener sesión en este equipo (guardar al cerrar el navegador)</label>
+                </div>
+                {mensajeError ? <p className="login-error">{mensajeError}</p> : null}
+                <button type="submit" className="login-submit">
+                  <span>Entrar</span>
+                  <span className="material-symbols-outlined" aria-hidden>
+                    {'arrow_forward'}
+                  </span>
+                </button>
+              </form>
+              <div className="login-soporte">
+                <div className="login-soporte-izq">
+                  <span className="material-symbols-outlined" aria-hidden>
+                    {'contact_support'}
+                  </span>
+                  <span>Soporte</span>
+                </div>
+                <div className="login-soporte-links">
+                  <a href="mailto:soporte@empresa.com">Contacto</a>
+                  <a href="#login-seguridad" onClick={(e) => e.preventDefault()}>
+                    Seguridad
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+        <footer className="login-footer">
+          <div className="login-footer-copy">© {new Date().getFullYear()} Susequid · ERP</div>
+          <div>
+            <a href="#privacidad" onClick={(e) => e.preventDefault()}>
+              Privacidad
+            </a>
+            <a href="#terminos" onClick={(e) => e.preventDefault()}>
+              Términos
+            </a>
+          </div>
+        </footer>
+        <div className="login-barra-inferior" aria-hidden />
       </div>
     )
   }
@@ -3047,9 +3776,14 @@ function App() {
     <div className={`contenedor-app ${temaOscuro ? 'tema-oscuro' : ''}`}>
       {menuMovilAbierto && <div className="overlay-menu-movil" onClick={() => setMenuMovilAbierto(false)} />}
       <aside className={`sidebar ${menuMovilAbierto ? 'abierto' : ''}`}>
-        <div className="sidebar-encabezado">
-          <h2>ERP Susequid</h2>
-          <small>Panel principal</small>
+        <div className="sidebar-marca">
+          <div className="sidebar-marca-icono" aria-hidden>
+            <span className="material-symbols-outlined">{'foundation'}</span>
+          </div>
+          <div className="sidebar-marca-textos">
+            <h2>ERP Susequid</h2>
+            <small>Panel principal</small>
+          </div>
         </div>
 
         <nav className="sidebar-menu">
@@ -3057,38 +3791,29 @@ function App() {
             className={moduloActivo === 'dashboard' ? 'sidebar-btn activo' : 'sidebar-btn'}
             onClick={() => irAModulo('dashboard')}
           >
-            <span className="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z" />
-              </svg>
+            <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
+              {'dashboard'}
             </span>
             Dashboard
           </button>
-          {!esTecnico && (
+          {esAdmin && (
             <button
               className={moduloActivo === 'inventario' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('inventario')}
             >
-              <span className="nav-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 19V9l8-4 8 4v10" />
-                  <path d="M9 22V12h6v10" />
-                </svg>
+              <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
+                {'inventory_2'}
               </span>
               Inventario
             </button>
           )}
-          {!esTecnico && (
+          {esAdmin && (
             <button
               className={moduloActivo === 'formularios' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('formularios')}
             >
-              <span className="nav-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" />
-                  <path d="M14 2v6h6" />
-                  <path d="M8 13h8M8 17h8M8 9h4" />
-                </svg>
+              <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
+                {'description'}
               </span>
               Formularios
             </button>
@@ -3098,13 +3823,8 @@ function App() {
               className={moduloActivo === 'flujos' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('flujos')}
             >
-              <span className="nav-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="6" height="6" rx="1.5" />
-                  <rect x="15" y="4" width="6" height="6" rx="1.5" />
-                  <rect x="9" y="14" width="6" height="6" rx="1.5" />
-                  <path d="M6 10v2h12V10M12 10v4" />
-                </svg>
+              <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
+                {'account_tree'}
               </span>
               Flujos
             </button>
@@ -3114,13 +3834,8 @@ function App() {
               className={moduloActivo === 'usuarios' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('usuarios')}
             >
-              <span className="nav-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
+              <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
+                {'group'}
               </span>
               Usuarios
             </button>
@@ -3128,13 +3843,9 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="sidebar-btn sidebar-btn-salir" onClick={cerrarSesion}>
-            <span className="nav-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
+          <button type="button" className="sidebar-btn sidebar-btn-salir" onClick={cerrarSesion}>
+            <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
+              {'logout'}
             </span>
             Cerrar sesión
           </button>
@@ -3155,37 +3866,104 @@ function App() {
                 <line x1="4" y1="18" x2="20" y2="18" />
               </svg>
             </button>
-            <h1>Sistema ERP de Mantenimiento</h1>
+            <div className="navbar-busqueda-fake" aria-hidden="true">
+              <span className="material-symbols-outlined">{'search'}</span>
+              <span className="navbar-busqueda-fake-texto">
+                {esAdmin ? 'Buscar inventario, formularios, flujos…' : 'Flujos y actividades operativas'}
+              </span>
+            </div>
           </div>
-          <div className="acciones-navbar">
-            <span className="navbar-meta">Área activa: {moduloActivo} | Roles: {rolesUsuario.join(', ') || 'N/A'}</span>
-            <button type="button" className="btn-tema" onClick={alternarTema}>
+          <div className="navbar-forge-centro">
+            <h1 className="navbar-titulo-modulo">Sistema ERP de Mantenimiento</h1>
+          </div>
+          <div className="navbar-forge-derecha">
+            <div className="navbar-rol-bloque">
+              <span className="navbar-rol-principal">
+                {(rolesUsuario[0] || 'USUARIO').replace(/_/g, ' ')}
+              </span>
+              <span className="navbar-rol-sub">Panel · {moduloActivo}</span>
+            </div>
+            <div className="navbar-notif-wrap" aria-hidden="true">
+              <span className="navbar-icon-btn">
+                <span className="material-symbols-outlined">{'notifications'}</span>
+              </span>
+            </div>
+            <span className="navbar-icon-btn" aria-hidden="true" title="Ajustes">
+              <span className="material-symbols-outlined">{'settings'}</span>
+            </span>
+            <button type="button" className="btn-tema" onClick={alternarTema} aria-label={temaOscuro ? 'Activar modo claro' : 'Activar modo oscuro'}>
               {temaOscuro ? (
                 <>
-                  <span className="nav-icon btn-tema-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75">
-                      <circle cx="12" cy="12" r="4" />
-                      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-                    </svg>
+                  <span className="material-symbols-outlined btn-tema-ms" aria-hidden>
+                    {'light_mode'}
                   </span>
-                  Modo claro
+                  <span className="btn-tema-texto">Modo claro</span>
                 </>
               ) : (
                 <>
-                  <span className="nav-icon btn-tema-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75">
-                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                    </svg>
+                  <span className="material-symbols-outlined btn-tema-ms" aria-hidden>
+                    {'dark_mode'}
                   </span>
-                  Modo oscuro
+                  <span className="btn-tema-texto">Modo oscuro</span>
                 </>
               )}
             </button>
+            <div className="navbar-sep" aria-hidden />
+            <div className="navbar-avatar" title={rolesUsuario.join(', ') || 'Usuario'} aria-hidden>
+              {(rolesUsuario[0] || 'US').slice(0, 2).toUpperCase()}
+            </div>
           </div>
         </header>
-        {mensajeError && <small className="texto-error">{mensajeError}</small>}
-        {renderContenido()}
+        <div className="contenido-cuerpo">
+          {mensajeError && <small className="texto-error">{mensajeError}</small>}
+          {renderContenido()}
+        </div>
       </main>
+      <nav className="nav-inferior-movil" aria-label="Navegación móvil">
+        <button
+          type="button"
+          className={moduloActivo === 'dashboard' ? 'activo' : ''}
+          onClick={() => irAModulo('dashboard')}
+        >
+          <span className="material-symbols-outlined">{'dashboard'}</span>
+          Inicio
+        </button>
+        {esAdmin && (
+          <button
+            type="button"
+            className={moduloActivo === 'inventario' ? 'activo' : ''}
+            onClick={() => irAModulo('inventario')}
+          >
+            <span className="material-symbols-outlined">{'inventory_2'}</span>
+            Inv.
+          </button>
+        )}
+        <div className="nav-inferior-fab">
+          <button type="button" aria-label="Abrir menú lateral" onClick={() => setMenuMovilAbierto(true)}>
+            <span className="material-symbols-outlined">{'menu'}</span>
+          </button>
+        </div>
+        {esAdmin && (
+          <button
+            type="button"
+            className={moduloActivo === 'formularios' ? 'activo' : ''}
+            onClick={() => irAModulo('formularios')}
+          >
+            <span className="material-symbols-outlined">{'description'}</span>
+            Form.
+          </button>
+        )}
+        {esAdmin && (
+          <button
+            type="button"
+            className={moduloActivo === 'usuarios' ? 'activo' : ''}
+            onClick={() => irAModulo('usuarios')}
+          >
+            <span className="material-symbols-outlined">{'group'}</span>
+            Usu.
+          </button>
+        )}
+      </nav>
     </div>
   )
 }

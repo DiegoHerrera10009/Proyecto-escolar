@@ -1,5 +1,7 @@
 package com.susequid.erp.controlador;
 
+import com.susequid.erp.dto.ImportarInventarioPeticion;
+import com.susequid.erp.dto.ImportarInventarioResultado;
 import com.susequid.erp.entidad.EquipoInventario;
 import com.susequid.erp.entidad.RolNombre;
 import com.susequid.erp.servicio.ServicioAutorizacion;
@@ -29,6 +31,19 @@ public class ControladorInventario {
     public EquipoInventario crear(@RequestHeader("Authorization") String autorizacion, @RequestBody EquipoInventario equipo) {
         servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.BODEGA, RolNombre.COMPRAS);
         return servicio.guardar(equipo);
+    }
+
+    /**
+     * Ruta en dos segmentos para no chocar con {@code PUT|DELETE /{id}} (un solo segmento como "importar"
+     * hacía que Spring devolviera "POST is not supported").
+     */
+    @PostMapping("/acciones/importar")
+    public ImportarInventarioResultado importar(
+            @RequestHeader("Authorization") String autorizacion,
+            @RequestBody ImportarInventarioPeticion peticion
+    ) {
+        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.BODEGA, RolNombre.COMPRAS);
+        return servicio.importarFilas(peticion != null ? peticion.getFilas() : List.of());
     }
 
     @PutMapping("/{id}")

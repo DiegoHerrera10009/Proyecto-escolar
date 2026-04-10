@@ -2,6 +2,8 @@ package com.susequid.erp.controlador;
 
 import com.susequid.erp.dto.CrearCatalogoInventarioPeticion;
 import com.susequid.erp.dto.EliminarCatalogoInventarioPeticion;
+import com.susequid.erp.dto.ImportarInventarioPeticion;
+import com.susequid.erp.dto.ImportarInventarioResultado;
 import com.susequid.erp.entidad.InventarioItem;
 import com.susequid.erp.entidad.RolNombre;
 import com.susequid.erp.entidad.Usuario;
@@ -106,6 +108,28 @@ public class ControladorInventarioCatalogo {
         try {
             servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.BODEGA, RolNombre.COMPRAS);
             return ResponseEntity.ok(servicio.crearItem(catalogoId, datos));
+        } catch (RuntimeException e) {
+            if (e instanceof IllegalArgumentException) {
+                return error(e.getMessage(), HttpStatus.BAD_REQUEST);
+            }
+            return error(e.getMessage(), HttpStatus.FORBIDDEN);
+        }
+    }
+
+    /** Dos segmentos después del id del catálogo para no chocar con {@code /{catalogoId}/items}. */
+    @PostMapping("/{catalogoId}/acciones/importar")
+    public ResponseEntity<?> importarItems(
+            @RequestHeader("Authorization") String autorizacion,
+            @PathVariable Long catalogoId,
+            @RequestBody ImportarInventarioPeticion peticion
+    ) {
+        try {
+            servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR, RolNombre.SUPERVISOR, RolNombre.BODEGA, RolNombre.COMPRAS);
+            ImportarInventarioResultado r = servicio.importarItemsDesdeFilas(
+                    catalogoId,
+                    peticion != null ? peticion.getFilas() : List.of()
+            );
+            return ResponseEntity.ok(r);
         } catch (RuntimeException e) {
             if (e instanceof IllegalArgumentException) {
                 return error(e.getMessage(), HttpStatus.BAD_REQUEST);

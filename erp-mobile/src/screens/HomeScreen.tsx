@@ -14,7 +14,7 @@ export function HomeScreen({ correo, onLogout }: Props) {
       <Text style={styles.titulo}>Sesión iniciada</Text>
       <Text style={styles.sub}>{correo}</Text>
       <Text style={styles.hint}>
-        Desde acá podés sumar pantallas (tareas, inventario, etc.) llamando a la misma API que la web.
+        Desde aquí puedes agregar pantallas (tareas, inventario, etc.) llamando a la misma API que la web.
       </Text>
       <Pressable style={styles.boton} onPress={onLogout}>
         <Text style={styles.botonTexto}>Cerrar sesión</Text>

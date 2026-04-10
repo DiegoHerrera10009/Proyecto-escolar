@@ -23,6 +23,18 @@ public class EquipoInventario {
 
     private String ubicacion;
 
+    /** Unidades en stock para este código (serial único). */
+    @Column(nullable = false)
+    private Integer cantidad = 1;
+
+    @PrePersist
+    @PreUpdate
+    private void normalizarCantidad() {
+        if (cantidad == null || cantidad < 0) {
+            cantidad = 1;
+        }
+    }
+
     public Long getId() {
         return id;
     }
@@ -69,5 +81,13 @@ public class EquipoInventario {
 
     public void setUbicacion(String ubicacion) {
         this.ubicacion = ubicacion;
+    }
+
+    public Integer getCantidad() {
+        return cantidad;
+    }
+
+    public void setCantidad(Integer cantidad) {
+        this.cantidad = cantidad;
     }
 }

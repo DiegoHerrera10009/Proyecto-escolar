@@ -15,10 +15,28 @@ export function esSupervisor(roles: string[]): boolean {
   return roles.includes('SUPERVISOR')
 }
 
+export function esComercial(roles: string[]): boolean {
+  return roles.some((r) => String(r).toUpperCase() === 'COMERCIAL')
+}
+
+export function esBodega(roles: string[]): boolean {
+  return roles.some((r) => String(r).toUpperCase() === 'BODEGA')
+}
+
+export function esCompras(roles: string[]): boolean {
+  return roles.some((r) => String(r).toUpperCase() === 'COMPRAS')
+}
+
 /**
- * Técnico o supervisor sin rol administrador: en la web solo ven el dashboard de menú / actividades (no el panel admin).
+ * Operadores de flujo en campo (alineado con `esOperadorFlujo` en App.jsx): inicio = menú/actividades, sin panel admin.
  */
 export function esVistaSoloPanelCampo(roles: string[]): boolean {
   if (esAdministrador(roles)) return false
-  return esTecnico(roles) || esSupervisor(roles)
+  return (
+    esTecnico(roles) ||
+    esSupervisor(roles) ||
+    esComercial(roles) ||
+    esBodega(roles) ||
+    esCompras(roles)
+  )
 }

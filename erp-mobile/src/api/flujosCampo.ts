@@ -14,6 +14,19 @@ export async function iniciarFlujoDesdeMenu(plantillaId: number): Promise<TareaC
   })
 }
 
+export type CrearPedidoFlujoPeticion = {
+  titulo?: string | null
+  descripcion?: string | null
+  productos: string[]
+}
+
+export async function iniciarFlujoPedido(peticion: CrearPedidoFlujoPeticion): Promise<TareaCampoResumen> {
+  return apiJson<TareaCampoResumen>('/campo/flujos/pedidos', {
+    method: 'POST',
+    body: JSON.stringify(peticion),
+  })
+}
+
 export async function misActividadesActivas(): Promise<TareaCampoResumen[]> {
   return apiJson<TareaCampoResumen[]>('/campo/flujos/mis-actividades/activas', { method: 'GET' })
 }

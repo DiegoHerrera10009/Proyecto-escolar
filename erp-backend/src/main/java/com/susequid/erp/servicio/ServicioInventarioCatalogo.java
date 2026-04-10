@@ -1,7 +1,10 @@
 package com.susequid.erp.servicio;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.susequid.erp.dto.FilaImportarInventario;
+import com.susequid.erp.dto.ImportarInventarioResultado;
 import com.susequid.erp.entidad.EstadoEquipo;
 import com.susequid.erp.entidad.InventarioCatalogo;
 import com.susequid.erp.entidad.InventarioItem;
@@ -11,9 +14,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -24,6 +31,10 @@ public class ServicioInventarioCatalogo {
     private static final Set<String> CLAVES_PERMITIDAS = Set.of(
             "nombre", "serial", "responsable", "estado", "ubicacion"
     );
+    private static final Set<String> CLAVES_ESTANDAR_ESQUEMA = Set.of(
+            "nombre", "serial", "responsable", "estado", "ubicacion"
+    );
+    private static final int MAX_FILAS_IMPORTACION = 5000;
 
     private final InventarioCatalogoRepositorio catalogoRepositorio;
     private final InventarioItemRepositorio itemRepositorio;
@@ -173,5 +184,129 @@ public class ServicioInventarioCatalogo {
             throw new IllegalArgumentException("Ítem no encontrado");
         }
         itemRepositorio.deleteById(itemId);
+    }
+
+    /**
+     * Importa filas (código → serial, descripción → nombre, existencias → columna personalizada si existe).
+     * Actualiza ítem si ya hay uno con el mismo serial en el catálogo.
+     */
+    @Transactional
+    public ImportarInventarioResultado importarItemsDesdeFilas(Long catalogoId, List<FilaImportarInventario> filas) {
+        ImportarInventarioResultado res = new ImportarInventarioResultado();
+        if (filas == null || filas.isEmpty()) {
+            res.getErrores().add("No se enviaron filas para importar");
+            return res;
+        }
+        if (filas.size() > MAX_FILAS_IMPORTACION) {
+            res.getErrores().add("Máximo " + MAX_FILAS_IMPORTACION + " filas por importación");
+            return res;
+        }
+        InventarioCatalogo cat = catalogoRepositorio.findById(catalogoId)
+                .orElseThrow(() -> new IllegalArgumentException("Catálogo no encontrado"));
+        List<String> cols = leerColumnasCatalogo(cat);
+        String claveExistencias = resolverClaveColumnaExistencias(cols);
+
+        Set<String> vistosEnArchivo = new HashSet<>();
+        int n = 0;
+        for (FilaImportarInventario f : filas) {
+            n++;
+            if (f == null) {
+                res.setIgnorados(res.getIgnorados() + 1);
+                continue;
+            }
+            String codigo = f.getCodigo() != null ? f.getCodigo().trim() : "";
+            String desc = f.getDescripcion() != null ? f.getDescripcion().trim() : "";
+            if (codigo.isEmpty() && desc.isEmpty()) {
+                res.setIgnorados(res.getIgnorados() + 1);
+                continue;
+            }
+            if (codigo.isEmpty()) {
+                res.getErrores().add("Fila " + n + ": falta código de producto");
+                continue;
+            }
+            if (desc.isEmpty()) {
+                res.getErrores().add("Fila " + n + " (código " + codigo + "): falta descripción");
+                continue;
+            }
+            String codigoNorm = codigo.toUpperCase(Locale.ROOT);
+            if (!vistosEnArchivo.add(codigoNorm)) {
+                res.getErrores().add("Fila " + n + ": código duplicado en el archivo (" + codigo + ")");
+                continue;
+            }
+            int cant = f.getExistencias() != null ? f.getExistencias() : 1;
+            if (cant < 0) {
+                res.getErrores().add("Fila " + n + " (" + codigo + "): existencias no pueden ser negativas");
+                continue;
+            }
+
+            Optional<InventarioItem> existente = itemRepositorio.findByCatalogo_IdAndSerial(catalogoId, codigo);
+            InventarioItem item;
+            if (existente.isPresent()) {
+                item = existente.get();
+                res.setActualizados(res.getActualizados() + 1);
+            } else {
+                item = new InventarioItem();
+                item.setCatalogo(cat);
+                item.setEstado(EstadoEquipo.ACTIVO);
+                res.setCreados(res.getCreados() + 1);
+            }
+            item.setNombre(desc);
+            item.setSerial(codigo);
+
+            LinkedHashMap<String, String> extra = new LinkedHashMap<>(item.getDatosExtra());
+            if (claveExistencias != null) {
+                extra.put(claveExistencias, String.valueOf(cant));
+            }
+            item.setDatosExtra(extra);
+            itemRepositorio.save(item);
+        }
+        return res;
+    }
+
+    private List<String> leerColumnasCatalogo(InventarioCatalogo cat) {
+        if (cat.getColumnasJson() == null || cat.getColumnasJson().isBlank()) {
+            return new ArrayList<>(COLUMNAS_DEFECTO);
+        }
+        try {
+            List<String> arr = objectMapper.readValue(cat.getColumnasJson(), new TypeReference<List<String>>() {});
+            return arr != null && !arr.isEmpty() ? arr : new ArrayList<>(COLUMNAS_DEFECTO);
+        } catch (Exception e) {
+            return new ArrayList<>(COLUMNAS_DEFECTO);
+        }
+    }
+
+    /**
+     * Columna personalizada donde guardar cantidades (misma clave que en datosExtra del ítem).
+     */
+    private String resolverClaveColumnaExistencias(List<String> cols) {
+        for (String c : cols) {
+            if (c == null) {
+                continue;
+            }
+            String t = c.trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+            String l = t.toLowerCase(Locale.ROOT);
+            if (CLAVES_ESTANDAR_ESQUEMA.contains(l)) {
+                continue;
+            }
+            if (l.contains("exist") || l.contains("cantidad") || l.contains("stock") || l.contains("inventario")) {
+                return t;
+            }
+        }
+        for (String c : cols) {
+            if (c == null) {
+                continue;
+            }
+            String t = c.trim();
+            if (t.isEmpty()) {
+                continue;
+            }
+            if (!CLAVES_ESTANDAR_ESQUEMA.contains(t.toLowerCase(Locale.ROOT))) {
+                return t;
+            }
+        }
+        return null;
     }
 }

@@ -70,8 +70,8 @@ public class ControladorUsuario {
             @RequestHeader("Authorization") String autorizacion,
             @PathVariable Long id
     ) {
-        servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR);
-        servicioUsuario.eliminar(id);
+        Usuario admin = servicioAutorizacion.requerirRol(autorizacion, RolNombre.ADMINISTRADOR);
+        servicioUsuario.eliminar(id, admin);
     }
 }
 

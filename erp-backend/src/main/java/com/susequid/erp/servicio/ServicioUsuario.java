@@ -7,10 +7,11 @@ import com.susequid.erp.repositorio.RolRepositorio;
 import com.susequid.erp.repositorio.UsuarioRepositorio;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Set;
 import java.util.List;
 import java.util.HashSet;
+import java.util.Set;
 
 @Service
 public class ServicioUsuario {
@@ -49,13 +50,56 @@ public class ServicioUsuario {
         return usuarioRepositorio.save(usuario);
     }
 
-    public void eliminar(Long usuarioId) {
+    /**
+     * Elimina un usuario tras liberar referencias en tablas que apuntan a {@code usuarios.id}.
+     * Las tareas con {@code creado_por_id} obligatorio pasan a otro administrador (el que ejecuta el borrado u otro).
+     */
+    @Transactional
+    public void eliminar(Long usuarioId, Usuario ejecutorAdmin) {
         Usuario usuario = usuarioRepositorio.findById(usuarioId)
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
         if (ServicioAutorizacion.CORREO_SUPER_ADMIN.equalsIgnoreCase(usuario.getCorreo())) {
             throw new RuntimeException("No se puede eliminar el super admin");
         }
+        Long sustitutoCreador = resolverSustitutoCreador(usuarioId, ejecutorAdmin.getId());
+
+        jdbcTemplate.update("UPDATE respuestas_formulario SET usuario_id = NULL WHERE usuario_id = ?", usuarioId);
+        jdbcTemplate.update("UPDATE historial_tarea_campo SET usuario_id = NULL WHERE usuario_id = ?", usuarioId);
+        jdbcTemplate.update("UPDATE bitacora_workflow SET usuario_id = NULL WHERE usuario_id = ?", usuarioId);
+        jdbcTemplate.update("UPDATE evidencias_digitales SET usuario_id = NULL WHERE usuario_id = ?", usuarioId);
+        jdbcTemplate.update("UPDATE etapas_tarea_campo SET completada_por_id = NULL WHERE completada_por_id = ?", usuarioId);
+        jdbcTemplate.update("UPDATE plantas_electricas SET tecnico_asignado_id = NULL WHERE tecnico_asignado_id = ?", usuarioId);
+        jdbcTemplate.update("UPDATE mantenimientos_planta SET tecnico_id = NULL WHERE tecnico_id = ?", usuarioId);
+        jdbcTemplate.update("UPDATE tareas_campo SET asignado_a_id = NULL WHERE asignado_a_id = ?", usuarioId);
+        jdbcTemplate.update(
+                "UPDATE tareas_campo SET creado_por_id = ? WHERE creado_por_id = ?",
+                sustitutoCreador,
+                usuarioId
+        );
+
         usuarioRepositorio.delete(usuario);
+    }
+
+    private Long resolverSustitutoCreador(Long usuarioAEliminarId, Long ejecutorId) {
+        if (!ejecutorId.equals(usuarioAEliminarId)) {
+            return ejecutorId;
+        }
+        List<Long> otros = jdbcTemplate.queryForList(
+                "SELECT u.id FROM usuarios u "
+                        + "INNER JOIN usuarios_roles ur ON ur.usuario_id = u.id "
+                        + "INNER JOIN roles r ON r.id = ur.rol_id "
+                        + "WHERE r.nombre = 'ADMINISTRADOR' AND u.id <> ? "
+                        + "LIMIT 1",
+                Long.class,
+                usuarioAEliminarId
+        );
+        if (otros.isEmpty()) {
+            throw new RuntimeException(
+                    "No se puede eliminar el único administrador: debe existir otro usuario con rol ADMINISTRADOR "
+                            + "para reasignar las tareas creadas por este usuario."
+            );
+        }
+        return otros.get(0);
     }
 
     private void asegurarRolesSistema() {

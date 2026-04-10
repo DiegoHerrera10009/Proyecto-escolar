@@ -8,6 +8,14 @@ export const colors = {
   text: '#0f172a',
   textSecondary: '#334155',
   primary: '#4f46e5',
+  /** Paleta login (alineada con App.css :root login-*) */
+  loginSurface: '#f8f7fc',
+  loginSurfaceLow: '#f1f0f9',
+  loginPrimary: '#3730a3',
+  loginPrimaryDeep: '#1e1b4b',
+  loginOnSurfaceVariant: '#57586a',
+  loginOutline: '#767683',
+  loginTertiaryAccent: '#c2410c',
   /** Alias de primary (textos de acento, enlaces) */
   accent: '#4f46e5',
   primaryMuted: '#eef2ff',

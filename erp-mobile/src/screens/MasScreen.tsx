@@ -39,7 +39,7 @@ export function MasScreen() {
               navigation.navigate('Placeholder', {
                 titulo: 'Formularios',
                 descripcion:
-                  'El diseño de formularios y respuestas detalladas sigue en la web. Desde el celular podés ejecutar flujos que usan esos formularios en la pestaña Flujos.',
+                  'El diseño de formularios y respuestas detalladas sigue en la web. Desde el celular puedes ejecutar flujos que usan esos formularios en la pestaña Flujos.',
               })
             }
           />

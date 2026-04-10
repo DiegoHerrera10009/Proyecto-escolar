@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, StyleSheet, View } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 import { setAuthToken } from './src/api/client'
@@ -73,26 +74,26 @@ export default function App() {
     return { correo, roles, logout: () => void handleLogout() }
   }, [correo, roles, handleLogout])
 
-  if (booting) {
-    return (
-      <View style={styles.boot}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <StatusBar style="dark" />
-      </View>
-    )
-  }
-
   return (
-    <NavigationContainer theme={navTheme}>
-      {session ? (
-        <SessionContext.Provider value={session}>
-          <MainNavigator />
-        </SessionContext.Provider>
+    <SafeAreaProvider>
+      {booting ? (
+        <View style={styles.boot}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <StatusBar style="dark" />
+        </View>
       ) : (
-        <LoginScreen onSubmit={handleSubmitLogin} />
+        <NavigationContainer theme={navTheme}>
+          {session ? (
+            <SessionContext.Provider value={session}>
+              <MainNavigator />
+            </SessionContext.Provider>
+          ) : (
+            <LoginScreen onSubmit={handleSubmitLogin} />
+          )}
+          <StatusBar style="dark" />
+        </NavigationContainer>
       )}
-      <StatusBar style="dark" />
-    </NavigationContainer>
+    </SafeAreaProvider>
   )
 }
 

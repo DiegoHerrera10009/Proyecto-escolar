@@ -1,5 +1,6 @@
 com\susequid\erp\controlador\ControladorInventario.class
 com\susequid\erp\dto\LoginRespuesta.class
+com\susequid\erp\servicio\ServicioInventarioCatalogo$1.class
 com\susequid\erp\entidad\HistorialTareaCampo.class
 com\susequid\erp\dto\CrearCatalogoInventarioPeticion.class
 com\susequid\erp\servicio\ServicioInventarioCatalogo.class
@@ -20,7 +21,9 @@ com\susequid\erp\servicio\ServicioPlantaElectrica.class
 com\susequid\erp\dto\CrearPedidoFlujoPeticion.class
 com\susequid\erp\repositorio\TareaCampoRepositorio.class
 com\susequid\erp\servicio\ServicioTareaCampo.class
+com\susequid\erp\dto\ImportarInventarioResultado.class
 com\susequid\erp\entidad\RolNombre.class
+com\susequid\erp\dto\FilaImportarInventario.class
 com\susequid\erp\entidad\FormularioDinamico.class
 com\susequid\erp\servicio\ServicioEvidenciaDigital.class
 com\susequid\erp\dto\LoginPeticion.class
@@ -68,6 +71,7 @@ com\susequid\erp\dto\AsignarTareaCampoPeticion.class
 com\susequid\erp\entidad\MantenimientoPlanta.class
 com\susequid\erp\dto\CambioEstadoWorkflowPeticion.class
 com\susequid\erp\servicio\ServicioFormulario.class
+com\susequid\erp\dto\ImportarInventarioPeticion.class
 com\susequid\erp\entidad\InventarioItem$1.class
 com\susequid\erp\entidad\TipoVisibilidadFlujo.class
 com\susequid\erp\servicio\ServicioAutorizacion.class

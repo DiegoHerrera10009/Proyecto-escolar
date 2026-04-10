@@ -67,7 +67,7 @@ export function AdminEjecucionesScreen() {
           <RefreshControl refreshing={refrescando} onRefresh={() => void refrescar()} tintColor={colors.accent} />
         }
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={styles.vacio}>No hay ejecuciones o no tenés permiso.</Text>}
+        ListEmptyComponent={<Text style={styles.vacio}>No hay ejecuciones o no tienes permiso.</Text>}
         renderItem={({ item }) => (
           <View style={styles.row}>
             <Text style={styles.rowTit}>{item.titulo || `#${item.id}`}</Text>

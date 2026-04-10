@@ -161,7 +161,7 @@ export function TareaDetailScreen() {
           />
         </>
       ) : (
-        <Text style={styles.avisoFinal}>Esta tarea ya está cerrada; no se puede cambiar el estado desde acá.</Text>
+        <Text style={styles.avisoFinal}>Esta tarea ya está cerrada; no se puede cambiar el estado desde aquí.</Text>
       )}
 
       <Text style={styles.secTitulo}>Historial</Text>

@@ -22,6 +22,9 @@ C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearP
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearPlantillaFlujoPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\CrearTareaCampoPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\EliminarCatalogoInventarioPeticion.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\FilaImportarInventario.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\ImportarInventarioPeticion.java
+C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\ImportarInventarioResultado.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\LoginPeticion.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\LoginRespuesta.java
 C:\Proyectosdh\SusequidSaS\erp-backend\src\main\java\com\susequid\erp\dto\PasoFlujoDefPeticion.java

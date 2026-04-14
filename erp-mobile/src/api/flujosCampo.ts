@@ -20,8 +20,26 @@ export type CrearPedidoFlujoPeticion = {
   productos: string[]
 }
 
+export type CrearPermisoFlujoPeticion = {
+  titulo?: string | null
+  tipoPermiso: 'DIAS' | 'HORAS'
+  fechaDesde?: string | null
+  fechaHasta?: string | null
+  horaDesde?: string | null
+  horaHasta?: string | null
+  fechaPermiso?: string | null
+  motivo: string
+}
+
 export async function iniciarFlujoPedido(peticion: CrearPedidoFlujoPeticion): Promise<TareaCampoResumen> {
   return apiJson<TareaCampoResumen>('/campo/flujos/pedidos', {
+    method: 'POST',
+    body: JSON.stringify(peticion),
+  })
+}
+
+export async function iniciarFlujoPermiso(peticion: CrearPermisoFlujoPeticion): Promise<TareaCampoResumen> {
+  return apiJson<TareaCampoResumen>('/campo/flujos/permisos', {
     method: 'POST',
     body: JSON.stringify(peticion),
   })

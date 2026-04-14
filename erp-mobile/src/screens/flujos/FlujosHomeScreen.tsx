@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 
 import {
   iniciarFlujoDesdeMenu,
+  iniciarFlujoPermiso,
   iniciarFlujoPedido,
   menuFlujos,
   misActividadesActivas,
@@ -38,6 +39,7 @@ type Segmento = 'disponibles' | 'mis' | 'historial'
 
 type FilaDisponible =
   | { tipo: 'pedido_fijo' }
+  | { tipo: 'permiso_fijo' }
   | { tipo: 'plantilla'; plantilla: TareaCampoResumen }
 
 function parsearProductos(texto: string): string[] {
@@ -133,6 +135,7 @@ export function FlujosHomeScreen() {
 
   const filasDisponibles = useMemo((): FilaDisponible[] => {
     const filas: FilaDisponible[] = []
+    filas.push({ tipo: 'permiso_fijo' })
     if (comercial && seccion === 'OPERATIVOS') {
       filas.push({ tipo: 'pedido_fijo' })
     }
@@ -199,6 +202,19 @@ export function FlujosHomeScreen() {
     }
   }
 
+  async function enviarSolicitudPermiso() {
+    try {
+      await iniciarFlujoPermiso({
+        tipoPermiso: 'DIAS',
+        motivo: 'Solicitud de permiso registrada desde app móvil',
+      })
+      setSegmento('mis')
+      Alert.alert('Solicitud creada', 'Tu solicitud quedó enviada a Gestión Humana para aprobación.')
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo crear la solicitud')
+    }
+  }
+
   type FilaMis = { tipo: 'h'; titulo: string } | { tipo: 't'; item: TareaCampoResumen }
   const filasMis: FilaMis[] =
     segmento === 'mis'
@@ -252,7 +268,13 @@ export function FlujosHomeScreen() {
       {segmento === 'disponibles' ? (
         <FlatList
           data={filasDisponibles}
-          keyExtractor={(row, i) => (row.tipo === 'pedido_fijo' ? 'pedido-fijo' : `p-${row.plantilla.id}-${i}`)}
+          keyExtractor={(row, i) =>
+            row.tipo === 'pedido_fijo'
+              ? 'pedido-fijo'
+              : row.tipo === 'permiso_fijo'
+                ? 'permiso-fijo'
+                : `p-${row.plantilla.id}-${i}`
+          }
           refreshControl={
             <RefreshControl refreshing={refrescando} onRefresh={() => void refrescar()} tintColor={colors.primary} />
           }
@@ -261,7 +283,12 @@ export function FlujosHomeScreen() {
             cargando ? null : <Text style={styles.vacio}>No hay flujos disponibles en esta sección.</Text>
           }
           renderItem={({ item: row }) =>
-            row.tipo === 'pedido_fijo' ? (
+            row.tipo === 'permiso_fijo' ? (
+              <Pressable style={styles.row} onPress={() => void enviarSolicitudPermiso()}>
+                <Text style={styles.rowTit}>Solicitud de permiso (flujo fijo)</Text>
+                <Text style={styles.rowSub}>Cualquier rol puede solicitar; aprueba Gestión Humana</Text>
+              </Pressable>
+            ) : row.tipo === 'pedido_fijo' ? (
               <Pressable style={styles.row} onPress={abrirModalPedido}>
                 <Text style={styles.rowTit}>Pedido comercial (flujo fijo)</Text>
                 <Text style={styles.rowSub}>Crear pedido e iniciar en Bodega</Text>

@@ -51,6 +51,16 @@ function leerRolesIniciales() {
   }
 }
 
+function leerNombreUsuarioInicial() {
+  return localStorage.getItem('erp_nombre_usuario') || sessionStorage.getItem('erp_nombre_usuario') || ''
+}
+
+function leerUsuarioIdInicial() {
+  const raw = localStorage.getItem('erp_usuario_id') || sessionStorage.getItem('erp_usuario_id') || ''
+  if (!raw) return ''
+  return String(raw)
+}
+
 function App() {
   const [token, setToken] = useState(leerTokenInicial)
   const [correoLogin, setCorreoLogin] = useState('')
@@ -58,6 +68,8 @@ function App() {
   const [mostrarClaveLogin, setMostrarClaveLogin] = useState(false)
   const [mantenerSesionLogin, setMantenerSesionLogin] = useState(false)
   const [rolesUsuario, setRolesUsuario] = useState(leerRolesIniciales)
+  const [nombreUsuarioSesion, setNombreUsuarioSesion] = useState(leerNombreUsuarioInicial)
+  const [usuarioIdSesion, setUsuarioIdSesion] = useState(leerUsuarioIdInicial)
   const [mensajeError, setMensajeError] = useState('')
   const [temaOscuro, setTemaOscuro] = useState(() => localStorage.getItem('erp_tema') === 'oscuro')
   const [menuMovilAbierto, setMenuMovilAbierto] = useState(false)
@@ -195,8 +207,47 @@ function App() {
   const [adminVistaFlujoCargando, setAdminVistaFlujoCargando] = useState(false)
   const [adminVistaFlujoError, setAdminVistaFlujoError] = useState('')
   const [actividadFlujoExpandidaId, setActividadFlujoExpandidaId] = useState('')
+  const [actividadFlujoFormularioAbiertoId, setActividadFlujoFormularioAbiertoId] = useState('')
   const [etapasPorActividadFlujo, setEtapasPorActividadFlujo] = useState({})
   const [respuestasPasoFlujo, setRespuestasPasoFlujo] = useState({})
+  const [modalPermisoAbierto, setModalPermisoAbierto] = useState(false)
+  const [creandoPermiso, setCreandoPermiso] = useState(false)
+  const [modalPedidoAbierto, setModalPedidoAbierto] = useState(false)
+  const [creandoPedido, setCreandoPedido] = useState(false)
+  const [parseandoPdfPedido, setParseandoPdfPedido] = useState(false)
+  const [pedidoPdfAdvertencias, setPedidoPdfAdvertencias] = useState('')
+  const [pedidoForm, setPedidoForm] = useState({
+    titulo: 'Pedido comercial',
+    productosTexto: '',
+    descripcion: '',
+  })
+  const [modalConfirmacion, setModalConfirmacion] = useState({
+    abierto: false,
+    titulo: '',
+    mensaje: '',
+    textoConfirmar: 'Continuar',
+    variante: 'default',
+  })
+  const accionConfirmacionRef = useRef(null)
+  const [modalCancelarFlujo, setModalCancelarFlujo] = useState({
+    abierto: false,
+    tareaId: null,
+    motivo: '',
+  })
+  const [permisoForm, setPermisoForm] = useState({
+    nombresApellidos: '',
+    cedula: '',
+    tipoPermiso: 'DIAS',
+    fechaDesde: '',
+    fechaHasta: '',
+    horaDesde: '',
+    horaHasta: '',
+    fechaPermiso: '',
+    motivo: '',
+    soporteDescripcion: '',
+    soporteAdjuntoNombre: '',
+    soporteAdjuntoDataUrl: '',
+  })
   const [catalogosPorEndpoint, setCatalogosPorEndpoint] = useState({})
   const esAdmin = rolesUsuario.includes('ADMINISTRADOR')
   const esTecnico = rolesUsuario.includes('TECNICO')
@@ -204,7 +255,23 @@ function App() {
   const esComercial = rolesUsuario.includes('COMERCIAL')
   const esBodega = rolesUsuario.includes('BODEGA')
   const esCompras = rolesUsuario.includes('COMPRAS')
-  const esOperadorFlujo = esTecnico || esSupervisor || esComercial || esBodega || esCompras
+  const esHseq = rolesUsuario.includes('HSEQ')
+  const esGestionHumana = rolesUsuario.includes('GESTION_HUMANA')
+  const esOperadorFlujo = esTecnico || esSupervisor || esComercial || esBodega || esCompras || esHseq || esGestionHumana
+
+  /** Evita quedar en módulos solo-admin tras cambiar de sesión; la UI usa esto para no mostrar mensajes de error fuera de lugar. */
+  const moduloPantalla = useMemo(() => {
+    if (
+      !esAdmin &&
+      (moduloActivo === 'inventario' ||
+        moduloActivo === 'formularios' ||
+        moduloActivo === 'usuarios' ||
+        moduloActivo === 'flujos')
+    ) {
+      return 'dashboard'
+    }
+    return moduloActivo
+  }, [esAdmin, moduloActivo])
 
   const resumen = useMemo(
     () => [
@@ -236,7 +303,13 @@ function App() {
 
   useEffect(() => {
     if (!token || !rolesUsuario.length) return
-    if (!esAdmin && (moduloActivo === 'inventario' || moduloActivo === 'formularios')) {
+    if (
+      !esAdmin &&
+      (moduloActivo === 'inventario' ||
+        moduloActivo === 'formularios' ||
+        moduloActivo === 'usuarios' ||
+        moduloActivo === 'flujos')
+    ) {
       setModuloActivo('dashboard')
     }
   }, [token, rolesUsuario.length, esAdmin, moduloActivo])
@@ -314,19 +387,32 @@ function App() {
       }
       const data = await respuesta.json()
       const roles = data.roles || []
+      const nombreSesion = (data.nombreCompleto || data.nombre || data.usuario || data.correo || correoLogin || '').trim()
+      const idSesion = data.id !== undefined && data.id !== null ? String(data.id) : ''
       setToken(data.token)
       setRolesUsuario(roles)
+      setNombreUsuarioSesion(nombreSesion)
+      setUsuarioIdSesion(idSesion)
+      setModuloActivo('dashboard')
       const rolesJson = JSON.stringify(roles)
       if (mantenerSesionLogin) {
         localStorage.setItem('erp_token', data.token)
         localStorage.setItem('erp_roles', rolesJson)
+        localStorage.setItem('erp_nombre_usuario', nombreSesion)
+        localStorage.setItem('erp_usuario_id', idSesion)
         sessionStorage.removeItem('erp_token')
         sessionStorage.removeItem('erp_roles')
+        sessionStorage.removeItem('erp_nombre_usuario')
+        sessionStorage.removeItem('erp_usuario_id')
       } else {
         sessionStorage.setItem('erp_token', data.token)
         sessionStorage.setItem('erp_roles', rolesJson)
+        sessionStorage.setItem('erp_nombre_usuario', nombreSesion)
+        sessionStorage.setItem('erp_usuario_id', idSesion)
         localStorage.removeItem('erp_token')
         localStorage.removeItem('erp_roles')
+        localStorage.removeItem('erp_nombre_usuario')
+        localStorage.removeItem('erp_usuario_id')
       }
     } catch (error) {
       setMensajeError(error.message)
@@ -336,10 +422,17 @@ function App() {
   const cerrarSesion = () => {
     localStorage.removeItem('erp_token')
     localStorage.removeItem('erp_roles')
+    localStorage.removeItem('erp_nombre_usuario')
+    localStorage.removeItem('erp_usuario_id')
     sessionStorage.removeItem('erp_token')
     sessionStorage.removeItem('erp_roles')
+    sessionStorage.removeItem('erp_nombre_usuario')
+    sessionStorage.removeItem('erp_usuario_id')
     setToken('')
     setRolesUsuario([])
+    setNombreUsuarioSesion('')
+    setUsuarioIdSesion('')
+    setModuloActivo('dashboard')
     setPlantas([])
     setInventario([])
     setCatalogosInventarioLista([])
@@ -367,7 +460,13 @@ function App() {
   }
 
   const irAModulo = (modulo) => {
-    if (!esAdmin && (modulo === 'inventario' || modulo === 'formularios')) {
+    if (
+      !esAdmin &&
+      (modulo === 'inventario' ||
+        modulo === 'formularios' ||
+        modulo === 'usuarios' ||
+        modulo === 'flujos')
+    ) {
       setModuloActivo('dashboard')
       setMenuMovilAbierto(false)
       return
@@ -1104,11 +1203,36 @@ function App() {
         return mismoFormulario && mismoTecnico
       })
       .sort((a, b) => new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime())
+    const etapasInforme = [...(etapasPorActividadFlujo[tarea.id] || [])]
+      .filter((e) => e?.completada && e?.respuestaJson)
+      .sort((a, b) => (b.orden || 0) - (a.orden || 0))
+    const fallbackEtapa = etapasInforme[0] || null
+    const respuestaDesdeEtapa = fallbackEtapa
+      ? {
+          formulario: fallbackEtapa.formulario || tarea.formulario || null,
+          usuario: fallbackEtapa.completadaPor || tarea.asignadoA || null,
+          fechaRegistro: fallbackEtapa.completadaEn || null,
+          respuestaJson: fallbackEtapa.respuestaJson || '{}',
+        }
+      : null
     return {
       tarea,
-      respuesta: candidatas[0] || null,
+      respuesta: candidatas[0] || respuestaDesdeEtapa || null,
     }
-  }, [informeTareaSeleccionadaId, tareasCampo, respuestasFormularios])
+  }, [informeTareaSeleccionadaId, tareasCampo, respuestasFormularios, etapasPorActividadFlujo])
+
+  const alternarInformeAdmin = async (tareaId) => {
+    const sid = tareaId !== undefined && tareaId !== null && tareaId !== '' ? String(tareaId) : ''
+    const yaAbierto = String(informeTareaSeleccionadaId) === sid
+    if (yaAbierto) {
+      setInformeTareaSeleccionadaId('')
+      return
+    }
+    setInformeTareaSeleccionadaId(sid)
+    if (!etapasPorActividadFlujo[sid]) {
+      await cargarEtapasActividadFlujo(sid)
+    }
+  }
 
   const guardarUsuario = async (e) => {
     e.preventDefault()
@@ -1689,6 +1813,7 @@ function App() {
   const toggleExpandirActividadFlujo = async (tareaId) => {
     const sid = tareaId !== undefined && tareaId !== null && tareaId !== '' ? String(tareaId) : ''
     setActividadFlujoExpandidaId((prev) => (String(prev) === sid ? '' : sid))
+    setActividadFlujoFormularioAbiertoId('')
     setRespuestasPasoFlujo({})
     if (!sid) return
     const etapas = await cargarEtapasActividadFlujo(sid)
@@ -1705,54 +1830,173 @@ function App() {
     }
   }
 
-  const iniciarFlujoDesdeMenu = async (plantillaId, tituloPlantilla) => {
-    const nombre = (tituloPlantilla && String(tituloPlantilla).trim()) || 'este flujo'
-    if (!window.confirm(`¿Desea empezar el formulario «${nombre}»? Se creará una nueva actividad en «Mis actividades».`)) {
-      return
-    }
-    setMensajeError('')
-    const r = await fetch(`${API_URL}/campo/flujos/plantillas/${plantillaId}/iniciar`, { method: 'POST', headers: cabeceras() })
-    let cuerpo = {}
-    try {
-      cuerpo = await r.json()
-    } catch {
-      cuerpo = {}
-    }
-    if (!r.ok) {
-      setMensajeError(`No se pudo iniciar (${r.status}) ${cuerpo.mensaje || cuerpo.error || ''}`.trim())
-      return
-    }
-    await refrescarPanelFlujosUsuario()
-    await cargarDatos()
-    if (cuerpo?.id) {
-      setActividadFlujoExpandidaId(String(cuerpo.id))
-      setRespuestasPasoFlujo({})
-      await cargarEtapasActividadFlujo(String(cuerpo.id))
-      setVistaPanelFlujo('mis')
+  const cerrarModalConfirmacion = () => {
+    accionConfirmacionRef.current = null
+    setModalConfirmacion((prev) => ({ ...prev, abierto: false }))
+  }
+
+  const ejecutarModalConfirmacion = () => {
+    const fn = accionConfirmacionRef.current
+    accionConfirmacionRef.current = null
+    setModalConfirmacion((prev) => ({ ...prev, abierto: false }))
+    if (typeof fn === 'function') {
+      void Promise.resolve(fn()).catch(() => {})
     }
   }
 
-  const iniciarPedidoComercial = async () => {
+  const abrirModalConfirmacion = ({ titulo, mensaje, onConfirmar, textoConfirmar = 'Continuar', variante = 'default' }) => {
+    accionConfirmacionRef.current = onConfirmar
+    setModalConfirmacion({
+      abierto: true,
+      titulo,
+      mensaje,
+      textoConfirmar,
+      variante,
+    })
+  }
+
+  const iniciarFlujoDesdeMenu = (plantillaId, tituloPlantilla) => {
+    const nombre = (tituloPlantilla && String(tituloPlantilla).trim()) || 'este flujo'
+    abrirModalConfirmacion({
+      titulo: 'Iniciar flujo',
+      mensaje: `¿Deseas empezar el formulario «${nombre}»? Se creará una nueva actividad en «Mis actividades».`,
+      textoConfirmar: 'Sí, iniciar',
+      onConfirmar: async () => {
+        setMensajeError('')
+        const r = await fetch(`${API_URL}/campo/flujos/plantillas/${plantillaId}/iniciar`, { method: 'POST', headers: cabeceras() })
+        let cuerpo = {}
+        try {
+          cuerpo = await r.json()
+        } catch {
+          cuerpo = {}
+        }
+        if (!r.ok) {
+          setMensajeError(`No se pudo iniciar (${r.status}) ${cuerpo.mensaje || cuerpo.error || ''}`.trim())
+          return
+        }
+        await refrescarPanelFlujosUsuario()
+        await cargarDatos()
+        if (cuerpo?.id) {
+          setActividadFlujoExpandidaId(String(cuerpo.id))
+          setActividadFlujoFormularioAbiertoId('')
+          setRespuestasPasoFlujo({})
+          await cargarEtapasActividadFlujo(String(cuerpo.id))
+          setVistaPanelFlujo('mis')
+        }
+      },
+    })
+  }
+
+  const iniciarPedidoComercial = () => {
     if (!esComercial && !esAdmin) {
       setMensajeError('Solo Comercial puede iniciar este flujo.')
       return
     }
-    const productosTexto = window.prompt('Productos del pedido (separados por coma):', 'Producto A, Producto B')
-    if (productosTexto === null) return
-    const productos = String(productosTexto)
-      .split(',')
-      .map((p) => p.trim())
-      .filter(Boolean)
+    abrirModalConfirmacion({
+      titulo: 'Pedido comercial',
+      mensaje: '¿Deseas iniciar el flujo de pedido comercial? Se abrirá el formulario para completar los datos.',
+      textoConfirmar: 'Continuar',
+      onConfirmar: () => {
+        setPedidoForm({
+          titulo: 'Pedido comercial',
+          productosTexto: '',
+          descripcion: '',
+        })
+        setPedidoPdfAdvertencias('')
+        setModalPedidoAbierto(true)
+      },
+    })
+  }
+
+  const parsearPdfPedidoComercial = async (ev) => {
+    const file = ev.target.files?.[0]
+    if (!file) return
+    setParseandoPdfPedido(true)
+    setMensajeError('')
+    setPedidoPdfAdvertencias('')
+    try {
+      const fd = new FormData()
+      fd.append('archivo', file)
+      const r = await fetch(`${API_URL}/campo/flujos/pedidos/parsear-pdf`, {
+        method: 'POST',
+        headers: cabecerasAuth(),
+        body: fd,
+      })
+      let cuerpo = {}
+      try {
+        cuerpo = await r.json()
+      } catch {
+        cuerpo = {}
+      }
+      if (!r.ok) {
+        setMensajeError(
+          `No se pudo leer el PDF (${r.status}) ${cuerpo.mensaje || cuerpo.error || ''}`.trim(),
+        )
+        return
+      }
+      const lineas = Array.isArray(cuerpo.lineas) ? cuerpo.lineas : []
+      const partes = lineas
+        .map((l) => {
+          const ref = String(l.referencia ?? '').trim()
+          const desc = String(l.descripcion ?? '').trim()
+          if (ref && desc) return `${ref} | ${desc}`
+          return ref || desc
+        })
+        .filter(Boolean)
+      const textoNuevo = partes.join('\n')
+      setPedidoForm((prev) => {
+        const productosTexto = prev.productosTexto.trim()
+          ? `${prev.productosTexto.trim()}\n${textoNuevo}`
+          : textoNuevo
+        let titulo = prev.titulo
+        if (cuerpo.numeroPedido) {
+          titulo = `Pedido comercial #${cuerpo.numeroPedido}`
+        }
+        let descripcion = prev.descripcion ?? ''
+        if (cuerpo.numeroPedido) {
+          const lineaOrden = `Nº pedido (PDF): ${cuerpo.numeroPedido}`
+          if (!descripcion.includes(lineaOrden)) {
+            descripcion = descripcion.trim() ? `${lineaOrden}\n\n${descripcion.trim()}` : lineaOrden
+          }
+        }
+        return { ...prev, productosTexto, titulo, descripcion }
+      })
+      const adv = Array.isArray(cuerpo.advertencias) ? cuerpo.advertencias.filter(Boolean) : []
+      if (adv.length > 0) {
+        setPedidoPdfAdvertencias(adv.join(' '))
+      }
+    } catch (err) {
+      setMensajeError(err?.message || 'Error al subir el PDF.')
+    } finally {
+      setParseandoPdfPedido(false)
+      ev.target.value = ''
+    }
+  }
+
+  const lineasProductosPedidoDesdeTexto = (texto) => {
+    const t = String(texto || '').trim()
+    if (!t) return []
+    if (/\r?\n/.test(t)) return t.split(/\r?\n/).map((p) => p.trim()).filter(Boolean)
+    return t.split(',').map((p) => p.trim()).filter(Boolean)
+  }
+
+  const enviarPedidoComercial = async (e) => {
+    e.preventDefault()
+    const productos = lineasProductosPedidoDesdeTexto(pedidoForm.productosTexto)
     if (productos.length === 0) {
       setMensajeError('Debes ingresar al menos un producto para crear el pedido.')
       return
     }
-    const titulo = window.prompt('Título del pedido (opcional):', 'Pedido comercial') || ''
     setMensajeError('')
+    setCreandoPedido(true)
     const r = await fetch(`${API_URL}/campo/flujos/pedidos`, {
       method: 'POST',
       headers: cabeceras(),
-      body: JSON.stringify({ titulo, productos }),
+      body: JSON.stringify({
+        titulo: pedidoForm.titulo || 'Pedido comercial',
+        descripcion: pedidoForm.descripcion || '',
+        productos,
+      }),
     })
     let cuerpo = {}
     try {
@@ -1761,9 +2005,170 @@ function App() {
       cuerpo = {}
     }
     if (!r.ok) {
+      setCreandoPedido(false)
       setMensajeError(`No se pudo crear el pedido (${r.status}) ${cuerpo.mensaje || cuerpo.error || ''}`.trim())
       return
     }
+    setModalPedidoAbierto(false)
+    setCreandoPedido(false)
+    await refrescarPanelFlujosUsuario()
+    await cargarDatos()
+    setVistaPanelFlujo('mis')
+  }
+
+  const iniciarPreoperacionalVehiculo = () => {
+    if (!esTecnico) {
+      setMensajeError('Solo Técnico puede iniciar este flujo.')
+      return
+    }
+    abrirModalConfirmacion({
+      titulo: 'Preoperacional de vehículo',
+      mensaje: '¿Deseas iniciar el checklist de preoperacional? Se creará una actividad en «Mis actividades».',
+      textoConfirmar: 'Sí, iniciar',
+      onConfirmar: async () => {
+        setMensajeError('')
+        const r = await fetch(`${API_URL}/campo/flujos/preoperacionales`, {
+          method: 'POST',
+          headers: cabeceras(),
+        })
+        let cuerpo = {}
+        try {
+          cuerpo = await r.json()
+        } catch {
+          cuerpo = {}
+        }
+        if (!r.ok) {
+          setMensajeError(`No se pudo crear el preoperacional (${r.status}) ${cuerpo.mensaje || cuerpo.error || ''}`.trim())
+          return
+        }
+        await refrescarPanelFlujosUsuario()
+        await cargarDatos()
+        if (cuerpo?.id) {
+          setActividadFlujoExpandidaId(String(cuerpo.id))
+          setActividadFlujoFormularioAbiertoId(String(cuerpo.id))
+          setRespuestasPasoFlujo({})
+          await cargarEtapasActividadFlujo(String(cuerpo.id))
+        }
+        setVistaPanelFlujo('mis')
+      },
+    })
+  }
+
+  const iniciarSolicitudPermiso = () => {
+    abrirModalConfirmacion({
+      titulo: 'Solicitud de permiso',
+      mensaje: '¿Deseas iniciar una solicitud de permiso laboral?',
+      textoConfirmar: 'Continuar',
+      onConfirmar: () => {
+        setPermisoForm({
+          nombresApellidos: '',
+          cedula: '',
+          tipoPermiso: 'DIAS',
+          fechaDesde: '',
+          fechaHasta: '',
+          horaDesde: '',
+          horaHasta: '',
+          fechaPermiso: '',
+          motivo: '',
+          soporteDescripcion: '',
+          soporteAdjuntoNombre: '',
+          soporteAdjuntoDataUrl: '',
+        })
+        setModalPermisoAbierto(true)
+      },
+    })
+  }
+
+  const abrirModalCancelarFlujo = (tareaId) => {
+    setModalCancelarFlujo({ abierto: true, tareaId, motivo: '' })
+  }
+
+  const ejecutarCancelarFlujo = async () => {
+    const { tareaId, motivo } = modalCancelarFlujo
+    if (!tareaId) return
+    setModalCancelarFlujo({ abierto: false, tareaId: null, motivo: '' })
+    setMensajeError('')
+    const r = await fetch(`${API_URL}/campo/flujos/ejecuciones/${tareaId}/cancelar`, {
+      method: 'POST',
+      headers: cabeceras(),
+      body: JSON.stringify({ motivo: motivo || '' }),
+    })
+    let cuerpo = {}
+    try {
+      cuerpo = await r.json()
+    } catch {
+      cuerpo = {}
+    }
+    if (!r.ok) {
+      setMensajeError(`No se pudo cancelar el flujo (${r.status}) ${cuerpo.mensaje || cuerpo.error || ''}`.trim())
+      return
+    }
+    setActividadFlujoExpandidaId('')
+    setActividadFlujoFormularioAbiertoId('')
+    setRespuestasPasoFlujo({})
+    await refrescarPanelFlujosUsuario()
+    await cargarDatos()
+  }
+
+  const enviarSolicitudPermiso = async (e) => {
+    e.preventDefault()
+    const tipo = String(permisoForm.tipoPermiso || 'DIAS').toUpperCase()
+    if (!permisoForm.nombresApellidos.trim()) {
+      setMensajeError('Debes registrar nombres y apellidos.')
+      return
+    }
+    if (!permisoForm.cedula.trim()) {
+      setMensajeError('Debes registrar la cédula.')
+      return
+    }
+    if (!permisoForm.motivo.trim()) {
+      setMensajeError('Debes registrar el motivo del permiso.')
+      return
+    }
+    if (tipo === 'DIAS' && (!permisoForm.fechaDesde || !permisoForm.fechaHasta)) {
+      setMensajeError('Para permiso por días debes indicar fecha desde y hasta.')
+      return
+    }
+    if (
+      tipo === 'HORAS' &&
+      (!permisoForm.fechaPermiso || !permisoForm.horaDesde || !permisoForm.horaHasta)
+    ) {
+      setMensajeError('Para permiso por horas debes indicar fecha, hora desde y hora hasta.')
+      return
+    }
+    setMensajeError('')
+    setCreandoPermiso(true)
+    const r = await fetch(`${API_URL}/campo/flujos/permisos`, {
+      method: 'POST',
+      headers: cabeceras(),
+      body: JSON.stringify({
+        nombresApellidos: permisoForm.nombresApellidos.trim(),
+        cedula: permisoForm.cedula.trim(),
+        tipoPermiso: tipo,
+        motivo: permisoForm.motivo.trim(),
+        fechaDesde: permisoForm.fechaDesde || null,
+        fechaHasta: permisoForm.fechaHasta || null,
+        horaDesde: tipo === 'HORAS' ? permisoForm.horaDesde || null : null,
+        horaHasta: tipo === 'HORAS' ? permisoForm.horaHasta || null : null,
+        fechaPermiso: tipo === 'HORAS' ? permisoForm.fechaPermiso || null : null,
+        soporteDescripcion: permisoForm.soporteDescripcion.trim() || null,
+        soporteAdjuntoNombre: permisoForm.soporteAdjuntoNombre || null,
+        soporteAdjuntoDataUrl: permisoForm.soporteAdjuntoDataUrl || null,
+      }),
+    })
+    let cuerpo = {}
+    try {
+      cuerpo = await r.json()
+    } catch {
+      cuerpo = {}
+    }
+    if (!r.ok) {
+      setCreandoPermiso(false)
+      setMensajeError(`No se pudo crear la solicitud (${r.status}) ${cuerpo.mensaje || cuerpo.error || ''}`.trim())
+      return
+    }
+    setModalPermisoAbierto(false)
+    setCreandoPermiso(false)
     await refrescarPanelFlujosUsuario()
     await cargarDatos()
     setVistaPanelFlujo('mis')
@@ -1791,6 +2196,7 @@ function App() {
       return
     }
     setRespuestasPasoFlujo({})
+    setActividadFlujoFormularioAbiertoId('')
     setActividadFlujoExpandidaId('')
     setEtapasPorActividadFlujo((prev) => {
       const n = { ...prev }
@@ -1802,6 +2208,18 @@ function App() {
     if (cuerpo?.estado === 'TERMINADA') {
       setVistaPanelFlujo('historial')
     }
+  }
+
+  const puedeCancelarFlujoIniciado = (tarea, etapas = []) => {
+    if (!tarea || !usuarioIdSesion) return false
+    if (String(tarea?.creadoPor?.id || '') !== String(usuarioIdSesion)) return false
+    const estado = String(tarea.estado || '')
+    if (estado === 'TERMINADA' || estado === 'CANCELADA') return false
+    const pasoActivo = [...(Array.isArray(etapas) ? etapas : [])]
+      .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+      .find((e) => !e.completada)
+    if (pasoActivo && Number(pasoActivo.orden || 0) >= 2) return false
+    return true
   }
 
   const cargarPlantillasAdminFlujo = async () => {
@@ -1951,11 +2369,20 @@ function App() {
   }, [moduloActivo, esAdmin, vistaAdminFlujos, adminVistaFlujoPlantillaId])
 
   const renderContenido = () => {
-    if (moduloActivo === 'dashboard') {
+    if (moduloPantalla === 'dashboard') {
       if (esOperadorFlujo) {
-        const hayFlujosEnMenu = plantillasMenuFlujo.length > 0
-        const hayAccesoPedidoComercial = esComercial
-        const mostrarEstadoVacioDisponibles = !hayFlujosEnMenu && !hayAccesoPedidoComercial
+        const esSeccionOperativos = vistaSeccionFlujo !== 'flota'
+        const esSeccionFlota = vistaSeccionFlujo === 'flota'
+        const limitarPlantillasParaTecnico = esTecnico && !esAdmin
+        const plantillasVisibles = limitarPlantillasParaTecnico ? [] : plantillasMenuFlujo
+        const hayAccesoPermiso = esSeccionOperativos
+        const hayAccesoPedidoComercial = esSeccionOperativos && esComercial && !limitarPlantillasParaTecnico
+        const hayAccesoPreoperacional = esSeccionFlota && esTecnico
+        const totalDisponibles = plantillasVisibles.length
+          + (hayAccesoPermiso ? 1 : 0)
+          + (hayAccesoPedidoComercial ? 1 : 0)
+          + (hayAccesoPreoperacional ? 1 : 0)
+        const mostrarEstadoVacioDisponibles = totalDisponibles === 0
 
         return (
           <section className="panel-dashboard-tecnico panel-flujos-usuario dash-canvas dash-canvas--operador">
@@ -1984,7 +2411,7 @@ function App() {
                 className={vistaPanelFlujo === 'disponibles' ? 'btn-tab-admin activo' : 'btn-tab-admin'}
                 onClick={() => setVistaPanelFlujo('disponibles')}
               >
-                Disponibles <span className="badge-tab">{plantillasMenuFlujo.length}</span>
+                Disponibles <span className="badge-tab">{totalDisponibles}</span>
               </button>
               <button
                 type="button"
@@ -2005,7 +2432,25 @@ function App() {
             {vistaPanelFlujo === 'disponibles' && (
               <div className="flujos-disponibles-bloque">
                 <div className="grid-actividades-tecnico">
-                  {esComercial && (
+                  {esSeccionOperativos && (
+                    <button
+                      type="button"
+                      className="tarjeta-actividad-tecnico"
+                      onClick={() => iniciarSolicitudPermiso()}
+                    >
+                      <span className="tarjeta-actividad-ico" aria-hidden>
+                        <span className="material-symbols-outlined">{'event_note'}</span>
+                      </span>
+                      <span className="tarjeta-actividad-textos">
+                        <span className="tarjeta-actividad-titulo">Solicitud de permiso</span>
+                        <span className="tarjeta-actividad-hint">Registro de solicitud y validación por Gestión Humana</span>
+                      </span>
+                      <span className="material-symbols-outlined tarjeta-actividad-flecha" aria-hidden>
+                        {'arrow_forward'}
+                      </span>
+                    </button>
+                  )}
+                  {esSeccionOperativos && esComercial && (
                     <button
                       type="button"
                       className="tarjeta-actividad-tecnico tarjeta-actividad-tecnico--comercial"
@@ -2015,7 +2460,7 @@ function App() {
                         <span className="material-symbols-outlined">{'shopping_cart'}</span>
                       </span>
                       <span className="tarjeta-actividad-textos">
-                        <span className="tarjeta-actividad-titulo">Pedido comercial (flujo fijo)</span>
+                        <span className="tarjeta-actividad-titulo">Pedido comercial</span>
                         <span className="tarjeta-actividad-hint">Crear pedido e iniciar en Bodega</span>
                       </span>
                       <span className="material-symbols-outlined tarjeta-actividad-flecha" aria-hidden>
@@ -2023,7 +2468,25 @@ function App() {
                       </span>
                     </button>
                   )}
-                  {plantillasMenuFlujo.map((p) => (
+                  {hayAccesoPreoperacional && (
+                    <button
+                      type="button"
+                      className="tarjeta-actividad-tecnico"
+                      onClick={() => iniciarPreoperacionalVehiculo()}
+                    >
+                      <span className="tarjeta-actividad-ico" aria-hidden>
+                        <span className="material-symbols-outlined">{'local_shipping'}</span>
+                      </span>
+                      <span className="tarjeta-actividad-textos">
+                        <span className="tarjeta-actividad-titulo">Preoperacional de vehículo</span>
+                        <span className="tarjeta-actividad-hint">Checklist de seguridad antes de salida</span>
+                      </span>
+                      <span className="material-symbols-outlined tarjeta-actividad-flecha" aria-hidden>
+                        {'arrow_forward'}
+                      </span>
+                    </button>
+                  )}
+                  {plantillasVisibles.map((p) => (
                     <button
                       key={p.id}
                       type="button"
@@ -2051,6 +2514,228 @@ function App() {
                     <p className="flujos-vacio-estado-titulo">No hay flujos en el menú</p>
                   </div>
                 )}
+                {modalPermisoAbierto && (
+                  <div className="modal-permiso-fondo" onClick={() => !creandoPermiso && setModalPermisoAbierto(false)}>
+                    <div className="modal-permiso-caja" role="dialog" aria-modal="true" onClick={(ev) => ev.stopPropagation()}>
+                      <h4 className="modal-permiso-titulo">Solicitud de permiso laboral</h4>
+                      <form className="modal-permiso-form" onSubmit={enviarSolicitudPermiso}>
+                        <div className="modal-permiso-grid">
+                          <label className="modal-permiso-label">
+                            Nombres y apellidos
+                            <input
+                              type="text"
+                              value={permisoForm.nombresApellidos}
+                              onChange={(ev) => setPermisoForm((prev) => ({ ...prev, nombresApellidos: ev.target.value }))}
+                              required
+                            />
+                          </label>
+                          <label className="modal-permiso-label">
+                            Cédula
+                            <input
+                              type="text"
+                              value={permisoForm.cedula}
+                              onChange={(ev) => setPermisoForm((prev) => ({ ...prev, cedula: ev.target.value }))}
+                              required
+                            />
+                          </label>
+                        </div>
+                        <label className="modal-permiso-label">
+                          Tipo de permiso
+                          <select
+                            value={permisoForm.tipoPermiso}
+                            onChange={(ev) => setPermisoForm((prev) => ({ ...prev, tipoPermiso: ev.target.value }))}
+                          >
+                            <option value="DIAS">Por días</option>
+                            <option value="HORAS">Por horas</option>
+                          </select>
+                        </label>
+                        {permisoForm.tipoPermiso === 'DIAS' ? (
+                          <div className="modal-permiso-grid">
+                            <label className="modal-permiso-label">
+                              Desde la fecha
+                              <input
+                                type="date"
+                                value={permisoForm.fechaDesde}
+                                onChange={(ev) => setPermisoForm((prev) => ({ ...prev, fechaDesde: ev.target.value }))}
+                                required
+                              />
+                            </label>
+                            <label className="modal-permiso-label">
+                              Hasta la fecha
+                              <input
+                                type="date"
+                                value={permisoForm.fechaHasta}
+                                onChange={(ev) => setPermisoForm((prev) => ({ ...prev, fechaHasta: ev.target.value }))}
+                                required
+                              />
+                            </label>
+                          </div>
+                        ) : (
+                          <div className="modal-permiso-grid">
+                            <label className="modal-permiso-label">
+                              Fecha del permiso
+                              <input
+                                type="date"
+                                value={permisoForm.fechaPermiso}
+                                onChange={(ev) => setPermisoForm((prev) => ({ ...prev, fechaPermiso: ev.target.value }))}
+                                required
+                              />
+                            </label>
+                            <label className="modal-permiso-label">
+                              Hora desde
+                              <input
+                                type="time"
+                                value={permisoForm.horaDesde}
+                                onChange={(ev) => setPermisoForm((prev) => ({ ...prev, horaDesde: ev.target.value }))}
+                                required
+                              />
+                            </label>
+                            <label className="modal-permiso-label">
+                              Hora hasta
+                              <input
+                                type="time"
+                                value={permisoForm.horaHasta}
+                                onChange={(ev) => setPermisoForm((prev) => ({ ...prev, horaHasta: ev.target.value }))}
+                                required
+                              />
+                            </label>
+                          </div>
+                        )}
+                        <label className="modal-permiso-label">
+                          Motivo del permiso
+                          <textarea
+                            value={permisoForm.motivo}
+                            onChange={(ev) => setPermisoForm((prev) => ({ ...prev, motivo: ev.target.value }))}
+                            rows={4}
+                            required
+                          />
+                        </label>
+                        <label className="modal-permiso-label">
+                          Soporte (texto)
+                          <textarea
+                            value={permisoForm.soporteDescripcion}
+                            onChange={(ev) => setPermisoForm((prev) => ({ ...prev, soporteDescripcion: ev.target.value }))}
+                            rows={3}
+                            placeholder="Describe el soporte si no adjuntas archivo"
+                          />
+                        </label>
+                        <label className="modal-permiso-label">
+                          Adjuntar soporte (opcional)
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.webp"
+                            onChange={(ev) => {
+                              const file = ev.target.files?.[0]
+                              if (!file) {
+                                setPermisoForm((prev) => ({
+                                  ...prev,
+                                  soporteAdjuntoNombre: '',
+                                  soporteAdjuntoDataUrl: '',
+                                }))
+                                return
+                              }
+                              const lector = new FileReader()
+                              lector.onload = () => {
+                                const dataUrl = typeof lector.result === 'string' ? lector.result : ''
+                                setPermisoForm((prev) => ({
+                                  ...prev,
+                                  soporteAdjuntoNombre: file.name,
+                                  soporteAdjuntoDataUrl: dataUrl,
+                                }))
+                              }
+                              lector.readAsDataURL(file)
+                            }}
+                          />
+                        </label>
+                        {permisoForm.soporteAdjuntoNombre ? (
+                          <p className="texto-ref-id">Adjunto: {permisoForm.soporteAdjuntoNombre}</p>
+                        ) : null}
+                        <div className="modal-permiso-acciones">
+                          <button
+                            type="button"
+                            className="btn-secundario"
+                            onClick={() => !creandoPermiso && setModalPermisoAbierto(false)}
+                          >
+                            Cancelar
+                          </button>
+                          <button type="submit" disabled={creandoPermiso}>
+                            {creandoPermiso ? 'Enviando...' : 'Enviar solicitud'}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
+                {modalPedidoAbierto && (
+                  <div
+                    className="modal-permiso-fondo"
+                    onClick={() => !creandoPedido && !parseandoPdfPedido && setModalPedidoAbierto(false)}
+                  >
+                    <div className="modal-permiso-caja" role="dialog" aria-modal="true" onClick={(ev) => ev.stopPropagation()}>
+                      <h4 className="modal-permiso-titulo">Nuevo pedido comercial</h4>
+                      <form className="modal-permiso-form" onSubmit={enviarPedidoComercial}>
+                        <label className="modal-permiso-label">
+                          Título
+                          <input
+                            type="text"
+                            value={pedidoForm.titulo}
+                            onChange={(ev) => setPedidoForm((prev) => ({ ...prev, titulo: ev.target.value }))}
+                          />
+                        </label>
+                        <label className="modal-permiso-label">
+                          Importar desde PDF (texto seleccionable)
+                          <input
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            disabled={creandoPedido || parseandoPdfPedido}
+                            onChange={parsearPdfPedidoComercial}
+                          />
+                          {parseandoPdfPedido && (
+                            <span className="modal-permiso-hint" style={{ display: 'block', marginTop: 6 }}>
+                              Leyendo PDF…
+                            </span>
+                          )}
+                          {pedidoPdfAdvertencias && (
+                            <span className="modal-permiso-hint" style={{ display: 'block', marginTop: 6 }}>
+                              {pedidoPdfAdvertencias}
+                            </span>
+                          )}
+                        </label>
+                        <label className="modal-permiso-label">
+                          Productos (uno por línea; también puedes separar por coma en una sola línea)
+                          <textarea
+                            value={pedidoForm.productosTexto}
+                            onChange={(ev) => setPedidoForm((prev) => ({ ...prev, productosTexto: ev.target.value }))}
+                            rows={8}
+                            required
+                            spellCheck={false}
+                          />
+                        </label>
+                        <label className="modal-permiso-label">
+                          Descripción (notas para bodega; si importas PDF, aquí queda el Nº de pedido)
+                          <textarea
+                            value={pedidoForm.descripcion}
+                            onChange={(ev) => setPedidoForm((prev) => ({ ...prev, descripcion: ev.target.value }))}
+                            rows={4}
+                            spellCheck={false}
+                          />
+                        </label>
+                        <div className="modal-permiso-acciones">
+                          <button
+                            type="button"
+                            className="btn-secundario"
+                            onClick={() => !creandoPedido && !parseandoPdfPedido && setModalPedidoAbierto(false)}
+                          >
+                            Cancelar
+                          </button>
+                          <button type="submit" disabled={creandoPedido || parseandoPdfPedido}>
+                            {creandoPedido ? 'Creando...' : 'Crear pedido'}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2067,6 +2752,7 @@ function App() {
                   const paso = etapas.find((e) => !e.completada)
                   const exp = String(actividadFlujoExpandidaId) === String(t.id)
                   const productos = extraerProductosPedido(t)
+                  const solicitudPermiso = leerSolicitudPermisoDesdeEtapas(t, etapas)
                   let campos = []
                   if (paso?.formulario?.esquemaJson) {
                     try {
@@ -2077,7 +2763,7 @@ function App() {
                   }
                   return (
                     <div key={t.id} className="tarjeta-formulario tarjeta-formulario--espaciada">
-                      <div className="roles-grid">
+                      <div className="roles-grid flujo-actividad-cabecera">
                         <strong>{t.titulo}</strong>
                         <button type="button" className="btn-secundario" onClick={() => toggleExpandirActividadFlujo(exp ? '' : t.id)}>
                           {exp ? 'Ocultar' : paso ? 'Realizar mi paso' : 'Ver detalle'}
@@ -2088,13 +2774,79 @@ function App() {
                           Paso actual: {paso.nombre} · responsable {paso.rolResponsable}
                         </small>
                       )}
-                      {productos && <small className="texto-ref-id">Productos del pedido: {productos}</small>}
+                      {solicitudPermiso && (
+                        <small className="texto-ref-id">
+                          Solicitante: {solicitudPermiso.solicitanteNombre} · Rol: {solicitudPermiso.solicitanteRol}
+                        </small>
+                      )}
+                      {productos && (
+                        <small
+                          className="texto-ref-id"
+                          style={{ whiteSpace: 'pre-line', display: 'block', marginTop: '0.35rem' }}
+                        >
+                          {String(t.descripcion || '').trim()}
+                        </small>
+                      )}
+                      {puedeCancelarFlujoIniciado(t, etapas) && (
+                        <div style={{ marginTop: '0.55rem' }}>
+                          <button type="button" className="btn-peligro" onClick={() => abrirModalCancelarFlujo(t.id)}>
+                            Cancelar flujo
+                          </button>
+                        </div>
+                      )}
                       {exp && paso && (
+                        <div style={{ marginTop: '0.55rem' }}>
+                          <button
+                            type="button"
+                            className="btn-secundario"
+                            onClick={() => {
+                              const estaAbierto = String(actividadFlujoFormularioAbiertoId) === String(t.id)
+                              setActividadFlujoFormularioAbiertoId(estaAbierto ? '' : String(t.id))
+                              if (estaAbierto) {
+                                setRespuestasPasoFlujo({})
+                              }
+                            }}
+                          >
+                            {String(actividadFlujoFormularioAbiertoId) === String(t.id) ? 'Ocultar paso' : 'Realizar paso'}
+                          </button>
+                        </div>
+                      )}
+                      {exp && paso && String(actividadFlujoFormularioAbiertoId) === String(t.id) && (
                         <>
+                          {solicitudPermiso && (
+                            <div className="permiso-resumen-previo">
+                              <h4>Datos ingresados por el solicitante</h4>
+                              <ul>
+                                <li><strong>Nombres:</strong> {solicitudPermiso.nombresApellidos}</li>
+                                <li><strong>Cédula:</strong> {solicitudPermiso.cedula}</li>
+                                <li><strong>Tipo:</strong> {solicitudPermiso.tipoPermiso}</li>
+                                <li><strong>Fecha desde:</strong> {solicitudPermiso.fechaDesde}</li>
+                                <li><strong>Fecha hasta:</strong> {solicitudPermiso.fechaHasta}</li>
+                                <li><strong>Hora desde:</strong> {solicitudPermiso.horaDesde}</li>
+                                <li><strong>Hora hasta:</strong> {solicitudPermiso.horaHasta}</li>
+                                <li><strong>Fecha permiso:</strong> {solicitudPermiso.fechaPermiso}</li>
+                                <li><strong>Motivo:</strong> {solicitudPermiso.motivo}</li>
+                                <li><strong>Soporte texto:</strong> {solicitudPermiso.soporteDescripcion}</li>
+                                <li>
+                                  <strong>Adjunto:</strong>{' '}
+                                  {solicitudPermiso.soporteAdjuntoDataUrl ? (
+                                    <a
+                                      href={solicitudPermiso.soporteAdjuntoDataUrl}
+                                      download={solicitudPermiso.soporteAdjuntoNombre || 'soporte-permiso'}
+                                    >
+                                      {solicitudPermiso.soporteAdjuntoNombre || 'Descargar soporte'}
+                                    </a>
+                                  ) : (
+                                    'Sin adjunto'
+                                  )}
+                                </li>
+                              </ul>
+                            </div>
+                          )}
                           <h4 className="subtitulo-paso-formulario">{paso.formulario?.nombre || 'Formulario'}</h4>
                           {campos.length === 0 && <p>Sin campos en el formulario.</p>}
                           {campos.map((c, idx) => (
-                            <div key={`${c.nombre}-${idx}`} className="formulario">
+                            <div key={`${c.nombre}-${idx}`} className="flujo-campo-item">
                               <label>{c.etiqueta || c.nombre}</label>
                               {c.tipo === 'int' && (
                                 <input
@@ -2151,7 +2903,7 @@ function App() {
                               )}
                             </div>
                           ))}
-                          <div className="formulario">
+                          <div className="flujo-firma-item">
                             <label>Firma obligatoria</label>
                             <PanelFirma
                               value={respuestasPasoFlujo.firmaSistema || ''}
@@ -2189,7 +2941,21 @@ function App() {
                               Paso en curso: {pasoActual.nombre} · a cargo {pasoActual.rolResponsable}
                             </small>
                           )}
-                          {productos && <small className="texto-ref-id">Productos del pedido: {productos}</small>}
+                          {productos && (
+                            <small
+                              className="texto-ref-id"
+                              style={{ whiteSpace: 'pre-line', display: 'block', marginTop: '0.35rem' }}
+                            >
+                              {String(t.descripcion || '').trim()}
+                            </small>
+                          )}
+                          {puedeCancelarFlujoIniciado(t, etapas) && (
+                            <div style={{ marginTop: '0.55rem' }}>
+                              <button type="button" className="btn-peligro" onClick={() => abrirModalCancelarFlujo(t.id)}>
+                                Cancelar flujo
+                              </button>
+                            </div>
+                          )}
                           {exp && (
                             <ul className="lista-etapas-flujo">
                               {etapas.map((e) => (
@@ -2219,10 +2985,100 @@ function App() {
 
             {vistaPanelFlujo === 'historial' && (
               <div className="bloque-historial-actividades">
-                <TablaSimple
-                  columnas={['Ref.', 'Actividad', 'Estado']}
-                  filas={actividadesFlujoHistorial.map((t) => [t.id, t.titulo, renderEstadoTarea(t.estado)])}
-                />
+                {actividadesFlujoHistorial.length === 0 && <p>No tienes actividades finalizadas en esta sección.</p>}
+                {actividadesFlujoHistorial.map((t) => {
+                  const etapas = [...(etapasPorActividadFlujo[t.id] || [])].sort((a, b) => (a.orden || 0) - (b.orden || 0))
+                  const exp = String(actividadFlujoExpandidaId) === String(t.id)
+                  const productos = extraerProductosPedido(t)
+                  const solicitudPermiso = leerSolicitudPermisoDesdeEtapas(t, etapas)
+                  const decisionPermiso = leerDecisionPermisoDesdeEtapas(etapas)
+                  return (
+                    <div key={`hist-${t.id}`} className="tarjeta-formulario tarjeta-formulario--seguimiento">
+                      <div className="roles-grid">
+                        <strong>{t.titulo}</strong>
+                        <button type="button" className="btn-secundario" onClick={() => toggleExpandirActividadFlujo(exp ? '' : t.id)}>
+                          {exp ? 'Ocultar resumen' : 'Ver resumen del flujo'}
+                        </button>
+                      </div>
+                      <small className="texto-ref-id">
+                        Estado final: {renderEstadoTarea(t.estado)}
+                      </small>
+                      {solicitudPermiso && (
+                        <small className="texto-ref-id">
+                          Solicitante: {solicitudPermiso.solicitanteNombre} · Rol: {solicitudPermiso.solicitanteRol}
+                        </small>
+                      )}
+                      {decisionPermiso && (
+                        <small className="texto-ref-id">
+                          Decisión Gestión Humana: {decisionPermiso.autorizado} · Remunerado: {decisionPermiso.permisoRemunerado}
+                        </small>
+                      )}
+                      {productos && (
+                        <small
+                          className="texto-ref-id"
+                          style={{ whiteSpace: 'pre-line', display: 'block', marginTop: '0.35rem' }}
+                        >
+                          {String(t.descripcion || '').trim()}
+                        </small>
+                      )}
+                      {exp && (
+                        <>
+                          {solicitudPermiso && (
+                            <div className="permiso-resumen-previo">
+                              <h4>Resumen de la solicitud</h4>
+                              <ul>
+                                <li><strong>Nombres:</strong> {solicitudPermiso.nombresApellidos}</li>
+                                <li><strong>Cédula:</strong> {solicitudPermiso.cedula}</li>
+                                <li><strong>Tipo:</strong> {solicitudPermiso.tipoPermiso}</li>
+                                <li><strong>Motivo:</strong> {solicitudPermiso.motivo}</li>
+                                <li><strong>Soporte texto:</strong> {solicitudPermiso.soporteDescripcion}</li>
+                                <li>
+                                  <strong>Adjunto:</strong>{' '}
+                                  {solicitudPermiso.soporteAdjuntoDataUrl ? (
+                                    <a
+                                      href={solicitudPermiso.soporteAdjuntoDataUrl}
+                                      download={solicitudPermiso.soporteAdjuntoNombre || 'soporte-permiso'}
+                                    >
+                                      {solicitudPermiso.soporteAdjuntoNombre || 'Descargar soporte'}
+                                    </a>
+                                  ) : (
+                                    'Sin adjunto'
+                                  )}
+                                </li>
+                              </ul>
+                            </div>
+                          )}
+                          {decisionPermiso && (
+                            <div className="permiso-resumen-previo">
+                              <h4>Respuesta de Gestión Humana</h4>
+                              <ul>
+                                <li><strong>Autorizado:</strong> {decisionPermiso.autorizado}</li>
+                                <li><strong>Permiso remunerado:</strong> {decisionPermiso.permisoRemunerado}</li>
+                                <li><strong>Observaciones:</strong> {decisionPermiso.observaciones}</li>
+                              </ul>
+                            </div>
+                          )}
+                          <ul className="lista-etapas-flujo">
+                            {etapas.map((e) => (
+                              <li key={e.id}>
+                                {e.completada ? (
+                                  <>
+                                    <span className="etapa-marca etapa-marca--ok">✓</span> {e.nombre}
+                                    {e.completadaPor?.nombreCompleto ? ` · ${e.completadaPor.nombreCompleto}` : ''}
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="etapa-marca etapa-marca--pendiente">○</span> {e.nombre} · pendiente · responsable {e.rolResponsable}
+                                  </>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </section>
@@ -2340,7 +3196,9 @@ function App() {
                       <button
                         type="button"
                         className="btn-secundario"
-                        onClick={() => setInformeTareaSeleccionadaId((prev) => (String(prev) === String(t.id) ? '' : String(t.id)))}
+                        onClick={() => {
+                          void alternarInformeAdmin(t.id)
+                        }}
                       >
                         {String(informeTareaSeleccionadaId) === String(t.id) ? 'Ocultar informe' : 'Ver informe'}
                       </button>
@@ -2431,7 +3289,7 @@ function App() {
       )
     }
 
-    if (moduloActivo === 'flujos') {
+    if (moduloPantalla === 'flujos') {
       if (!esAdmin) {
         return <p>Solo administración puede diseñar y publicar flujos.</p>
       }
@@ -2723,7 +3581,7 @@ function App() {
       )
     }
 
-    if (moduloActivo === 'inventario') {
+    if (moduloPantalla === 'inventario') {
       if (!esAdmin) {
         return <p>Solo un usuario administrador puede gestionar inventarios.</p>
       }
@@ -3252,7 +4110,7 @@ function App() {
       )
     }
 
-    if (moduloActivo === 'formularios') {
+    if (moduloPantalla === 'formularios') {
       if (!esAdmin) {
         return <p>Solo un usuario administrador puede gestionar formularios.</p>
       }
@@ -3486,11 +4344,10 @@ function App() {
       )
     }
 
-    if (moduloActivo === 'usuarios') {
+    if (moduloPantalla === 'usuarios') {
       // modulo usuarios (solo admin)
       return (
         <section>
-          {!esAdmin && <p>Solo un usuario ADMINISTRADOR puede administrar usuarios.</p>}
           {esAdmin && (
             <>
               <div className="tabs-dashboard-admin">
@@ -3530,6 +4387,9 @@ function App() {
                             <small>{u.correo}</small>
                           </div>
                           <div className="acciones-usuario-admin">
+                            <button type="button" className="btn-secundario" onClick={() => actualizarRolUsuario(u.id, 'TECNICO')}>
+                              Asignar TECNICO
+                            </button>
                             <button type="button" className="btn-secundario" onClick={() => actualizarRolUsuario(u.id, 'BODEGA')}>
                               Asignar BODEGA
                             </button>
@@ -3538,6 +4398,9 @@ function App() {
                             </button>
                             <button type="button" className="btn-secundario" onClick={() => actualizarRolUsuario(u.id, 'COMERCIAL')}>
                               Asignar COMERCIAL
+                            </button>
+                            <button type="button" className="btn-secundario" onClick={() => actualizarRolUsuario(u.id, 'GESTION_HUMANA')}>
+                              Asignar GESTION_HUMANA
                             </button>
                             <button type="button" className="btn-peligro" onClick={() => eliminarUsuario(u.id)}>Eliminar</button>
                           </div>
@@ -3550,7 +4413,7 @@ function App() {
                 <div className="tarjeta-formulario">
                   <div className="panel-seccion-header">
                     <h3>Crear usuarios</h3>
-                    <span>Solo bodega, compras o comercial</span>
+                    <span>Roles: tecnico, bodega, compras, comercial o gestión humana</span>
                   </div>
                   <form className="formulario" onSubmit={guardarUsuario}>
                     <input
@@ -3578,6 +4441,15 @@ function App() {
                         <input
                           type="radio"
                           name="rolUsuario"
+                          checked={nuevoUsuario.rol === 'TECNICO'}
+                          onChange={() => setNuevoUsuario({ ...nuevoUsuario, rol: 'TECNICO' })}
+                        />
+                        TECNICO
+                      </label>
+                      <label className="rol-checkbox">
+                        <input
+                          type="radio"
+                          name="rolUsuario"
                           checked={nuevoUsuario.rol === 'BODEGA'}
                           onChange={() => setNuevoUsuario({ ...nuevoUsuario, rol: 'BODEGA' })}
                         />
@@ -3600,6 +4472,15 @@ function App() {
                           onChange={() => setNuevoUsuario({ ...nuevoUsuario, rol: 'COMERCIAL' })}
                         />
                         COMERCIAL
+                      </label>
+                      <label className="rol-checkbox">
+                        <input
+                          type="radio"
+                          name="rolUsuario"
+                          checked={nuevoUsuario.rol === 'GESTION_HUMANA'}
+                          onChange={() => setNuevoUsuario({ ...nuevoUsuario, rol: 'GESTION_HUMANA' })}
+                        />
+                        GESTION_HUMANA
                       </label>
                     </div>
                     <button type="submit">Crear usuario</button>
@@ -3663,24 +4544,24 @@ function App() {
             </div>
             <div className="login-form-inner">
               <h3 className="login-form-titulo">Iniciar sesión</h3>
-              <p className="login-form-sub">Ingresa tus credenciales corporativas para continuar.</p>
               <form className="login-form" onSubmit={login}>
                 <div className="login-field">
-                  <label htmlFor="login-correo">Correo institucional</label>
-                  <div className="login-input-wrap">
-                    <span className="material-symbols-outlined" aria-hidden>
+                  <label htmlFor="login-correo">Usuario o correo</label>
+                  <div className="login-input-row">
+                    <span className="material-symbols-outlined login-input-leading-icon" aria-hidden>
                       {'alternate_email'}
                     </span>
-                    <input
-                      id="login-correo"
-                      name="correo"
-                      type="email"
-                      autoComplete="username"
-                      placeholder="nombre@empresa.com"
-                      value={correoLogin}
-                      onChange={(e) => setCorreoLogin(e.target.value)}
-                      required
-                    />
+                    <div className="login-input-wrap">
+                      <input
+                        id="login-correo"
+                        name="correo"
+                        type="email"
+                        autoComplete="username"
+                        value={correoLogin}
+                        onChange={(e) => setCorreoLogin(e.target.value)}
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="login-field">
@@ -3696,30 +4577,31 @@ function App() {
                       ¿Olvidaste tu clave?
                     </button>
                   </div>
-                  <div className="login-input-wrap login-input-wrap--clave">
-                    <span className="material-symbols-outlined" aria-hidden>
+                  <div className="login-input-row">
+                    <span className="material-symbols-outlined login-input-leading-icon" aria-hidden>
                       {'lock'}
                     </span>
-                    <input
-                      id="login-clave"
-                      name="clave"
-                      type={mostrarClaveLogin ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      placeholder="••••••••••••"
-                      value={claveLogin}
-                      onChange={(e) => setClaveLogin(e.target.value)}
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="login-toggle-clave"
-                      onClick={() => setMostrarClaveLogin((v) => !v)}
-                      aria-label={mostrarClaveLogin ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                    >
-                      <span className="material-symbols-outlined">
-                        {mostrarClaveLogin ? 'visibility_off' : 'visibility'}
-                      </span>
-                    </button>
+                    <div className="login-input-wrap login-input-wrap--clave">
+                      <input
+                        id="login-clave"
+                        name="clave"
+                        type={mostrarClaveLogin ? 'text' : 'password'}
+                        autoComplete="current-password"
+                        value={claveLogin}
+                        onChange={(e) => setClaveLogin(e.target.value)}
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="login-toggle-clave"
+                        onClick={() => setMostrarClaveLogin((v) => !v)}
+                        aria-label={mostrarClaveLogin ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      >
+                        <span className="material-symbols-outlined">
+                          {mostrarClaveLogin ? 'visibility_off' : 'visibility'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="login-check-row">
@@ -3729,7 +4611,7 @@ function App() {
                     checked={mantenerSesionLogin}
                     onChange={(e) => setMantenerSesionLogin(e.target.checked)}
                   />
-                  <label htmlFor="login-mantener">Mantener sesión en este equipo (guardar al cerrar el navegador)</label>
+                  <label htmlFor="login-mantener">Mantener sesión en este equipo</label>
                 </div>
                 {mensajeError ? <p className="login-error">{mensajeError}</p> : null}
                 <button type="submit" className="login-submit">
@@ -3788,7 +4670,7 @@ function App() {
 
         <nav className="sidebar-menu">
           <button
-            className={moduloActivo === 'dashboard' ? 'sidebar-btn activo' : 'sidebar-btn'}
+            className={moduloPantalla === 'dashboard' ? 'sidebar-btn activo' : 'sidebar-btn'}
             onClick={() => irAModulo('dashboard')}
           >
             <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
@@ -3798,7 +4680,7 @@ function App() {
           </button>
           {esAdmin && (
             <button
-              className={moduloActivo === 'inventario' ? 'sidebar-btn activo' : 'sidebar-btn'}
+              className={moduloPantalla === 'inventario' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('inventario')}
             >
               <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
@@ -3809,7 +4691,7 @@ function App() {
           )}
           {esAdmin && (
             <button
-              className={moduloActivo === 'formularios' ? 'sidebar-btn activo' : 'sidebar-btn'}
+              className={moduloPantalla === 'formularios' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('formularios')}
             >
               <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
@@ -3820,7 +4702,7 @@ function App() {
           )}
           {esAdmin && (
             <button
-              className={moduloActivo === 'flujos' ? 'sidebar-btn activo' : 'sidebar-btn'}
+              className={moduloPantalla === 'flujos' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('flujos')}
             >
               <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
@@ -3831,7 +4713,7 @@ function App() {
           )}
           {esAdmin && (
             <button
-              className={moduloActivo === 'usuarios' ? 'sidebar-btn activo' : 'sidebar-btn'}
+              className={moduloPantalla === 'usuarios' ? 'sidebar-btn activo' : 'sidebar-btn'}
               onClick={() => irAModulo('usuarios')}
             >
               <span className="material-symbols-outlined sidebar-ms-icon" aria-hidden>
@@ -3879,9 +4761,11 @@ function App() {
           <div className="navbar-forge-derecha">
             <div className="navbar-rol-bloque">
               <span className="navbar-rol-principal">
-                {(rolesUsuario[0] || 'USUARIO').replace(/_/g, ' ')}
+                {nombreUsuarioSesion || 'Usuario'}
               </span>
-              <span className="navbar-rol-sub">Panel · {moduloActivo}</span>
+              <span className="navbar-rol-sub">
+                Rol: {(rolesUsuario[0] || 'USUARIO').replace(/_/g, ' ')} · Panel: {moduloPantalla}
+              </span>
             </div>
             <div className="navbar-notif-wrap" aria-hidden="true">
               <span className="navbar-icon-btn">
@@ -3910,7 +4794,7 @@ function App() {
             </button>
             <div className="navbar-sep" aria-hidden />
             <div className="navbar-avatar" title={rolesUsuario.join(', ') || 'Usuario'} aria-hidden>
-              {(rolesUsuario[0] || 'US').slice(0, 2).toUpperCase()}
+              {(nombreUsuarioSesion || rolesUsuario[0] || 'US').slice(0, 2).toUpperCase()}
             </div>
           </div>
         </header>
@@ -3922,7 +4806,7 @@ function App() {
       <nav className="nav-inferior-movil" aria-label="Navegación móvil">
         <button
           type="button"
-          className={moduloActivo === 'dashboard' ? 'activo' : ''}
+          className={moduloPantalla === 'dashboard' ? 'activo' : ''}
           onClick={() => irAModulo('dashboard')}
         >
           <span className="material-symbols-outlined">{'dashboard'}</span>
@@ -3931,7 +4815,7 @@ function App() {
         {esAdmin && (
           <button
             type="button"
-            className={moduloActivo === 'inventario' ? 'activo' : ''}
+            className={moduloPantalla === 'inventario' ? 'activo' : ''}
             onClick={() => irAModulo('inventario')}
           >
             <span className="material-symbols-outlined">{'inventory_2'}</span>
@@ -3946,7 +4830,7 @@ function App() {
         {esAdmin && (
           <button
             type="button"
-            className={moduloActivo === 'formularios' ? 'activo' : ''}
+            className={moduloPantalla === 'formularios' ? 'activo' : ''}
             onClick={() => irAModulo('formularios')}
           >
             <span className="material-symbols-outlined">{'description'}</span>
@@ -3956,7 +4840,7 @@ function App() {
         {esAdmin && (
           <button
             type="button"
-            className={moduloActivo === 'usuarios' ? 'activo' : ''}
+            className={moduloPantalla === 'usuarios' ? 'activo' : ''}
             onClick={() => irAModulo('usuarios')}
           >
             <span className="material-symbols-outlined">{'group'}</span>
@@ -3964,6 +4848,77 @@ function App() {
           </button>
         )}
       </nav>
+      {modalConfirmacion.abierto && (
+        <div className="modal-permiso-fondo" onClick={cerrarModalConfirmacion}>
+          <div
+            className="modal-permiso-caja modal-confirmacion-caja"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-confirmacion-titulo"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <h4 id="modal-confirmacion-titulo" className="modal-permiso-titulo">
+              {modalConfirmacion.titulo}
+            </h4>
+            <p className="modal-confirmacion-mensaje">{modalConfirmacion.mensaje}</p>
+            <div className="modal-permiso-acciones">
+              <button type="button" className="btn-secundario" onClick={cerrarModalConfirmacion}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className={modalConfirmacion.variante === 'peligro' ? 'btn-peligro' : 'modal-confirmacion-btn-ok'}
+                onClick={ejecutarModalConfirmacion}
+              >
+                {modalConfirmacion.textoConfirmar}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {modalCancelarFlujo.abierto && (
+        <div
+          className="modal-permiso-fondo"
+          onClick={() => setModalCancelarFlujo({ abierto: false, tareaId: null, motivo: '' })}
+        >
+          <div
+            className="modal-permiso-caja modal-confirmacion-caja"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-cancelar-flujo-titulo"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <h4 id="modal-cancelar-flujo-titulo" className="modal-permiso-titulo">
+              Cancelar flujo
+            </h4>
+            <p className="modal-confirmacion-mensaje">
+              Esta acción no se puede deshacer. ¿Deseas cancelar este flujo?
+            </p>
+            <label className="modal-permiso-label">
+              Motivo (opcional)
+              <textarea
+                value={modalCancelarFlujo.motivo}
+                onChange={(ev) =>
+                  setModalCancelarFlujo((prev) => ({ ...prev, motivo: ev.target.value }))
+                }
+                rows={3}
+              />
+            </label>
+            <div className="modal-permiso-acciones">
+              <button
+                type="button"
+                className="btn-secundario"
+                onClick={() => setModalCancelarFlujo({ abierto: false, tareaId: null, motivo: '' })}
+              >
+                Volver
+              </button>
+              <button type="button" className="btn-peligro" onClick={() => void ejecutarCancelarFlujo()}>
+                Sí, cancelar flujo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -4019,7 +4974,12 @@ function PanelFirma({ value, onChange }) {
     const rect = canvas.getBoundingClientRect()
     const clienteX = e.touches?.[0]?.clientX ?? e.clientX
     const clienteY = e.touches?.[0]?.clientY ?? e.clientY
-    return { x: clienteX - rect.left, y: clienteY - rect.top }
+    const escalaX = rect.width > 0 ? canvas.width / rect.width : 1
+    const escalaY = rect.height > 0 ? canvas.height / rect.height : 1
+    return {
+      x: (clienteX - rect.left) * escalaX,
+      y: (clienteY - rect.top) * escalaY,
+    }
   }
 
   const iniciar = (e) => {
@@ -4123,6 +5083,58 @@ function construirFilasInforme(respuestaJson) {
   } catch {
     return [['Respuesta', respuestaJson]]
   }
+}
+
+function leerSolicitudPermisoDesdeEtapas(tarea, etapas) {
+  if (!Array.isArray(etapas) || etapas.length === 0) return null
+  const etapaSolicitud = etapas.find((e) => e?.nombre === 'Solicitante - Registrar permiso' && e?.completada)
+  if (!etapaSolicitud?.respuestaJson) return null
+  let data = {}
+  try {
+    data = JSON.parse(etapaSolicitud.respuestaJson || '{}')
+  } catch {
+    data = {}
+  }
+  const solicitante = tarea?.creadoPor || {}
+  const roles = Array.isArray(solicitante?.roles) ? solicitante.roles.map((r) => r?.nombre).filter(Boolean) : []
+  return {
+    solicitanteNombre: solicitante?.nombreCompleto || solicitante?.correo || '-',
+    solicitanteRol: roles.length > 0 ? roles.join(', ') : '-',
+    nombresApellidos: data?.nombresApellidos || '-',
+    cedula: data?.cedula || '-',
+    tipoPermiso: data?.tipoPermiso || '-',
+    fechaDesde: data?.fechaDesde || '-',
+    fechaHasta: data?.fechaHasta || '-',
+    horaDesde: data?.horaDesde || '-',
+    horaHasta: data?.horaHasta || '-',
+    fechaPermiso: data?.fechaPermiso || '-',
+    motivo: data?.motivo || '-',
+    soporteDescripcion: data?.soporteDescripcion || '-',
+    soporteAdjuntoNombre: data?.soporteAdjuntoNombre || '',
+    soporteAdjuntoDataUrl: data?.soporteAdjuntoDataUrl || '',
+  }
+}
+
+function leerDecisionPermisoDesdeEtapas(etapas) {
+  const lista = Array.isArray(etapas) ? etapas : []
+  for (let i = lista.length - 1; i >= 0; i -= 1) {
+    const etapa = lista[i]
+    if (!etapa?.completada || !etapa?.respuestaJson) continue
+    try {
+      const data = JSON.parse(etapa.respuestaJson)
+      if (!data || typeof data !== 'object') continue
+      if (data.autorizado !== undefined || data.permisoRemunerado !== undefined || data.observaciones !== undefined) {
+        return {
+          autorizado: data.autorizado || '-',
+          permisoRemunerado: data.permisoRemunerado || '-',
+          observaciones: data.observaciones || '-',
+        }
+      }
+    } catch {
+      // ignorar respuesta inválida
+    }
+  }
+  return null
 }
 
 function renderEstadoTarea(estado) {

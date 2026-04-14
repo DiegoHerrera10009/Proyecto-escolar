@@ -2,8 +2,10 @@ package com.susequid.erp.controlador;
 
 import com.susequid.erp.dto.CompletarPasoFlujoPeticion;
 import com.susequid.erp.dto.CrearInstanciaFlujoPeticion;
+import com.susequid.erp.dto.CrearPermisoFlujoPeticion;
 import com.susequid.erp.dto.CrearPedidoFlujoPeticion;
 import com.susequid.erp.dto.CrearPlantillaFlujoPeticion;
+import com.susequid.erp.dto.ParseoPedidoPdfRespuesta;
 import com.susequid.erp.entidad.EstadoTareaCampo;
 import com.susequid.erp.entidad.EtapaTareaCampo;
 import com.susequid.erp.entidad.RolNombre;
@@ -11,7 +13,9 @@ import com.susequid.erp.entidad.TareaCampo;
 import com.susequid.erp.entidad.Usuario;
 import com.susequid.erp.servicio.ServicioAutorizacion;
 import com.susequid.erp.servicio.ServicioFlujoCampo;
+import com.susequid.erp.servicio.ServicioParseoPedidoPdf;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -21,10 +25,16 @@ import java.util.Map;
 public class ControladorFlujoCampo {
     private final ServicioFlujoCampo servicioFlujo;
     private final ServicioAutorizacion autorizacion;
+    private final ServicioParseoPedidoPdf servicioParseoPedidoPdf;
 
-    public ControladorFlujoCampo(ServicioFlujoCampo servicioFlujo, ServicioAutorizacion autorizacion) {
+    public ControladorFlujoCampo(
+            ServicioFlujoCampo servicioFlujo,
+            ServicioAutorizacion autorizacion,
+            ServicioParseoPedidoPdf servicioParseoPedidoPdf
+    ) {
         this.servicioFlujo = servicioFlujo;
         this.autorizacion = autorizacion;
+        this.servicioParseoPedidoPdf = servicioParseoPedidoPdf;
     }
 
     // ===== PLANTILLAS (admin) =====
@@ -115,13 +125,40 @@ public class ControladorFlujoCampo {
         return servicioFlujo.iniciarEjecucionDesdeMenu(id, u);
     }
 
+    /** Debe ir antes de {@code /pedidos} para que la ruta más específica se resuelva sin ambigüedad. */
+    @PostMapping("/pedidos/parsear-pdf")
+    public ParseoPedidoPdfRespuesta parsearPdfPedido(
+            @RequestHeader("Authorization") String auth,
+            @RequestParam("archivo") MultipartFile archivo
+    ) {
+        autorizacion.requerirRol(auth, RolNombre.COMERCIAL, RolNombre.ADMINISTRADOR);
+        return servicioParseoPedidoPdf.parsear(archivo);
+    }
+
     @PostMapping("/pedidos")
     public TareaCampo iniciarFlujoPedido(
             @RequestHeader("Authorization") String auth,
             @RequestBody CrearPedidoFlujoPeticion peticion
     ) {
-        Usuario comercial = autorizacion.requerirRol(auth, RolNombre.COMERCIAL);
+        Usuario comercial = autorizacion.requerirRol(auth, RolNombre.COMERCIAL, RolNombre.ADMINISTRADOR);
         return servicioFlujo.iniciarFlujoPedido(peticion, comercial);
+    }
+
+    @PostMapping("/permisos")
+    public TareaCampo iniciarFlujoPermiso(
+            @RequestHeader("Authorization") String auth,
+            @RequestBody CrearPermisoFlujoPeticion peticion
+    ) {
+        Usuario solicitante = autorizacion.requerirUsuario(auth);
+        return servicioFlujo.iniciarFlujoPermiso(peticion, solicitante);
+    }
+
+    @PostMapping("/preoperacionales")
+    public TareaCampo iniciarFlujoPreoperacionalVehiculo(
+            @RequestHeader("Authorization") String auth
+    ) {
+        Usuario tecnico = autorizacion.requerirRol(auth, RolNombre.TECNICO);
+        return servicioFlujo.iniciarFlujoPreoperacionalVehiculo(tecnico);
     }
 
     // ===== INSTANCIAS ÚNICAS (admin) =====
@@ -176,6 +213,17 @@ public class ControladorFlujoCampo {
         Usuario u = autorizacion.requerirUsuario(auth);
         CompletarPasoFlujoPeticion body = peticion != null ? peticion : new CompletarPasoFlujoPeticion();
         return servicioFlujo.completarPaso(tareaId, etapaId, body, u);
+    }
+
+    @PostMapping("/ejecuciones/{tareaId}/cancelar")
+    public TareaCampo cancelarEjecucionPorCreador(
+            @RequestHeader("Authorization") String auth,
+            @PathVariable Long tareaId,
+            @RequestBody(required = false) Map<String, String> body
+    ) {
+        Usuario u = autorizacion.requerirUsuario(auth);
+        String motivo = body != null ? body.get("motivo") : null;
+        return servicioFlujo.cancelarEjecucionPorCreador(tareaId, u, motivo);
     }
 
     // ===== ADMIN — monitoreo y control de ejecuciones =====

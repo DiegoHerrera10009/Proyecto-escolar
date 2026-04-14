@@ -8,5 +8,6 @@ public enum RolNombre {
     COMERCIAL,
     DESPACHO,
     HSEQ,
-    BODEGA
+    BODEGA,
+    GESTION_HUMANA
 }

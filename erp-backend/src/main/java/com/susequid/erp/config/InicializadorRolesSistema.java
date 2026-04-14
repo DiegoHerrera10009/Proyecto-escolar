@@ -26,23 +26,23 @@ public class InicializadorRolesSistema {
         // Mantiene el CHECK de roles alineado con los valores del enum RolNombre.
         jdbcTemplate.execute(
                 "DELETE FROM usuarios_roles WHERE rol_id IN (" +
-                        "SELECT id FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL')" +
+                        "SELECT id FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','TECNICO','SUPERVISOR','COMPRAS','COMERCIAL','DESPACHO','HSEQ','BODEGA','GESTION_HUMANA')" +
                         ")"
         );
         jdbcTemplate.execute(
-                "DELETE FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL')"
+                "DELETE FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','TECNICO','SUPERVISOR','COMPRAS','COMERCIAL','DESPACHO','HSEQ','BODEGA','GESTION_HUMANA')"
         );
         jdbcTemplate.execute("ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_nombre_check");
         jdbcTemplate.execute(
                 "ALTER TABLE roles ADD CONSTRAINT roles_nombre_check " +
                         "CHECK (nombre IN (" +
-                        "'ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL'" +
+                        "'ADMINISTRADOR','TECNICO','SUPERVISOR','COMPRAS','COMERCIAL','DESPACHO','HSEQ','BODEGA','GESTION_HUMANA'" +
                         "))"
         );
 
         jdbcTemplate.execute(
                 "INSERT INTO roles (nombre) VALUES " +
-                        "('ADMINISTRADOR'),('BODEGA'),('COMPRAS'),('COMERCIAL') " +
+                        "('ADMINISTRADOR'),('TECNICO'),('SUPERVISOR'),('COMPRAS'),('COMERCIAL'),('DESPACHO'),('HSEQ'),('BODEGA'),('GESTION_HUMANA') " +
                         "ON CONFLICT (nombre) DO NOTHING"
         );
 
@@ -52,15 +52,15 @@ public class InicializadorRolesSistema {
                 "UPDATE etapas_tarea_campo " +
                         "SET rol_responsable = CASE " +
                         "  WHEN rol_responsable = 'DESPACHO' THEN 'BODEGA' " +
-                        "  WHEN rol_responsable IN ('BODEGA','COMPRAS','COMERCIAL') THEN rol_responsable " +
+                        "  WHEN rol_responsable IN ('ADMINISTRADOR','TECNICO','SUPERVISOR','COMPRAS','COMERCIAL','DESPACHO','HSEQ','BODEGA','GESTION_HUMANA') THEN rol_responsable " +
                         "  ELSE 'BODEGA' " +
                         "END " +
                         "WHERE rol_responsable IS NULL " +
-                        "   OR rol_responsable NOT IN ('BODEGA','COMPRAS','COMERCIAL')"
+                        "   OR rol_responsable NOT IN ('ADMINISTRADOR','TECNICO','SUPERVISOR','COMPRAS','COMERCIAL','DESPACHO','HSEQ','BODEGA','GESTION_HUMANA')"
         );
         jdbcTemplate.execute(
                 "ALTER TABLE etapas_tarea_campo ADD CONSTRAINT etapas_tarea_campo_rol_responsable_check " +
-                        "CHECK (rol_responsable IN ('BODEGA','COMPRAS','COMERCIAL'))"
+                        "CHECK (rol_responsable IN ('ADMINISTRADOR','TECNICO','SUPERVISOR','COMPRAS','COMERCIAL','DESPACHO','HSEQ','BODEGA','GESTION_HUMANA'))"
         );
     }
 }

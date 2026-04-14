@@ -32,9 +32,11 @@ public class ServicioUsuario {
     public Usuario actualizarRol(Long usuarioId, RolNombre rolNombre) {
         asegurarRolesSistema();
         if (rolNombre != RolNombre.BODEGA
+                && rolNombre != RolNombre.TECNICO
                 && rolNombre != RolNombre.COMPRAS
-                && rolNombre != RolNombre.COMERCIAL) {
-            throw new RuntimeException("Solo se permite rol BODEGA, COMPRAS o COMERCIAL");
+                && rolNombre != RolNombre.COMERCIAL
+                && rolNombre != RolNombre.GESTION_HUMANA) {
+            throw new RuntimeException("Solo se permite rol TECNICO, BODEGA, COMPRAS, COMERCIAL o GESTION_HUMANA");
         }
         Usuario usuario = usuarioRepositorio.findById(usuarioId)
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
@@ -112,22 +114,22 @@ public class ServicioUsuario {
         }
         jdbcTemplate.execute(
                 "DELETE FROM usuarios_roles WHERE rol_id IN (" +
-                        "SELECT id FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL')" +
+                        "SELECT id FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','TECNICO','BODEGA','COMPRAS','COMERCIAL','GESTION_HUMANA')" +
                         ")"
         );
         jdbcTemplate.execute(
-                "DELETE FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL')"
+                "DELETE FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','TECNICO','BODEGA','COMPRAS','COMERCIAL','GESTION_HUMANA')"
         );
         jdbcTemplate.execute("ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_nombre_check");
         jdbcTemplate.execute(
                 "ALTER TABLE roles ADD CONSTRAINT roles_nombre_check " +
                         "CHECK (nombre IN (" +
-                        "'ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL'" +
+                        "'ADMINISTRADOR','TECNICO','BODEGA','COMPRAS','COMERCIAL','GESTION_HUMANA'" +
                         "))"
         );
         jdbcTemplate.execute(
                 "INSERT INTO roles (nombre) VALUES " +
-                        "('ADMINISTRADOR'),('BODEGA'),('COMPRAS'),('COMERCIAL') " +
+                        "('ADMINISTRADOR'),('TECNICO'),('BODEGA'),('COMPRAS'),('COMERCIAL'),('GESTION_HUMANA') " +
                         "ON CONFLICT (nombre) DO NOTHING"
         );
     }

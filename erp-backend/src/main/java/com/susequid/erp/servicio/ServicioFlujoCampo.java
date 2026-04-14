@@ -1,6 +1,7 @@
 package com.susequid.erp.servicio;
 
 import com.susequid.erp.dto.CompletarPasoFlujoPeticion;
+import com.susequid.erp.dto.CrearPermisoFlujoPeticion;
 import com.susequid.erp.dto.CrearPedidoFlujoPeticion;
 import com.susequid.erp.dto.CrearInstanciaFlujoPeticion;
 import com.susequid.erp.dto.CrearPlantillaFlujoPeticion;
@@ -36,6 +37,14 @@ public class ServicioFlujoCampo {
     private static final String ETAPA_COMPRAS = "Compras - Gestionar compra";
     private static final String ETAPA_BODEGA_RECEPCION = "Bodega - Registrar recepcion";
     private static final String ETAPA_BODEGA_DESPACHO = "Bodega - Despachar pedido";
+    private static final String TITULO_BASE_PERMISO = "Solicitud de permiso laboral";
+    private static final String NOMBRE_FORMULARIO_PERMISO_SOLICITUD = "FORM_PERMISO_SOLICITUD";
+    private static final String NOMBRE_FORMULARIO_PERMISO_GH = "FORM_PERMISO_GESTION_HUMANA";
+    private static final String ETAPA_PERMISO_SOLICITUD = "Solicitante - Registrar permiso";
+    private static final String ETAPA_PERMISO_APROBACION = "Gestion humana - Aprobar permiso";
+    private static final String TITULO_BASE_PREOPERACIONAL = "Preoperacional de vehiculo";
+    private static final String NOMBRE_FORMULARIO_PREOPERACIONAL_VEHICULO = "FORM_PREOPERACIONAL_VEHICULO";
+    private static final String ETAPA_PREOPERACIONAL_TECNICO = "Tecnico - Diligenciar preoperacional";
 
     public ServicioFlujoCampo(
             TareaCampoRepositorio tareaRepositorio,
@@ -364,9 +373,14 @@ public class ServicioFlujoCampo {
                 ? peticion.getTitulo().trim()
                 : TITULO_BASE_PEDIDOS + " - " + LocalDateTime.now().toLocalDate();
         String descripcion = (peticion.getDescripcion() != null ? peticion.getDescripcion().trim() : "");
-        String descripcionProductos = "Productos: " + String.join(", ", peticion.getProductos());
+        String descripcionProductos = "Productos:\n" + peticion.getProductos().stream()
+                .map(String::trim)
+                .filter(p -> !p.isBlank())
+                .collect(Collectors.joining("\n"));
         ejecucion.setTitulo(titulo);
-        ejecucion.setDescripcion(descripcion.isBlank() ? descripcionProductos : descripcion + " | " + descripcionProductos);
+        ejecucion.setDescripcion(descripcion.isBlank()
+                ? descripcionProductos
+                : descripcion + "\n\n" + descripcionProductos);
         ejecucion.setEstado(EstadoTareaCampo.EN_PROCESO);
         ejecucion.setEsPlantillaFlujo(false);
         ejecucion.setSeccionPanel(SeccionPanelFlujo.OPERATIVOS);
@@ -393,6 +407,147 @@ public class ServicioFlujoCampo {
         h.setEstadoNuevo(EstadoTareaCampo.EN_PROCESO);
         h.setComentario("Pedido creado por Comercial. Flujo enviado a Bodega para revision de inventario");
         h.setUsuario(comercial);
+        historialRepositorio.save(h);
+
+        return tareaRepositorio.findById(ejecucion.getId()).orElse(ejecucion);
+    }
+
+    @Transactional
+    public TareaCampo iniciarFlujoPermiso(CrearPermisoFlujoPeticion peticion, Usuario solicitante) {
+        if (peticion == null) {
+            throw new RuntimeException("La solicitud de permiso es obligatoria");
+        }
+        String motivo = peticion.getMotivo() != null ? peticion.getMotivo().trim() : "";
+        if (motivo.isBlank()) {
+            throw new RuntimeException("El motivo del permiso es obligatorio");
+        }
+        String nombresApellidos = peticion.getNombresApellidos() != null ? peticion.getNombresApellidos().trim() : "";
+        if (nombresApellidos.isBlank()) {
+            throw new RuntimeException("Nombres y apellidos son obligatorios");
+        }
+        String cedula = peticion.getCedula() != null ? peticion.getCedula().trim() : "";
+        if (cedula.isBlank()) {
+            throw new RuntimeException("La cédula es obligatoria");
+        }
+        String soporteDescripcion = peticion.getSoporteDescripcion() != null ? peticion.getSoporteDescripcion().trim() : "";
+        String soporteAdjuntoNombre = peticion.getSoporteAdjuntoNombre() != null ? peticion.getSoporteAdjuntoNombre().trim() : "";
+        String soporteAdjuntoDataUrl = peticion.getSoporteAdjuntoDataUrl() != null ? peticion.getSoporteAdjuntoDataUrl().trim() : "";
+        String tipoPermiso = peticion.getTipoPermiso() != null ? peticion.getTipoPermiso().trim().toUpperCase(Locale.ROOT) : "DIAS";
+        if (!"DIAS".equals(tipoPermiso) && !"HORAS".equals(tipoPermiso)) {
+            throw new RuntimeException("tipoPermiso debe ser DIAS u HORAS");
+        }
+
+        FormularioDinamico formSolicitud = obtenerOCrearFormularioPedido(
+                NOMBRE_FORMULARIO_PERMISO_SOLICITUD,
+                "{\"campos\":[" +
+                        "{\"nombre\":\"nombresApellidos\",\"etiqueta\":\"Nombres y apellidos\",\"tipo\":\"string\"}," +
+                        "{\"nombre\":\"cedula\",\"etiqueta\":\"Cedula\",\"tipo\":\"string\"}," +
+                        "{\"nombre\":\"tipoPermiso\",\"etiqueta\":\"Tipo de permiso\",\"tipo\":\"select\",\"opciones\":[\"DIAS\",\"HORAS\"]}," +
+                        "{\"nombre\":\"fechaDesde\",\"etiqueta\":\"Desde la fecha\",\"tipo\":\"fecha\"}," +
+                        "{\"nombre\":\"fechaHasta\",\"etiqueta\":\"Hasta la fecha\",\"tipo\":\"fecha\"}," +
+                        "{\"nombre\":\"horaDesde\",\"etiqueta\":\"Desde hora\",\"tipo\":\"string\"}," +
+                        "{\"nombre\":\"horaHasta\",\"etiqueta\":\"Hasta hora\",\"tipo\":\"string\"}," +
+                        "{\"nombre\":\"fechaPermiso\",\"etiqueta\":\"Fecha del permiso\",\"tipo\":\"fecha\"}," +
+                        "{\"nombre\":\"motivo\",\"etiqueta\":\"Motivo\",\"tipo\":\"string\"}," +
+                        "{\"nombre\":\"soporteDescripcion\",\"etiqueta\":\"Soporte descripcion\",\"tipo\":\"string\"}," +
+                        "{\"nombre\":\"soporteAdjuntoNombre\",\"etiqueta\":\"Soporte adjunto nombre\",\"tipo\":\"string\"}," +
+                        "{\"nombre\":\"soporteAdjuntoDataUrl\",\"etiqueta\":\"Soporte adjunto\",\"tipo\":\"string\"}" +
+                        "]}"
+        );
+        FormularioDinamico formAprobacionGh = obtenerOCrearFormularioPedido(
+                NOMBRE_FORMULARIO_PERMISO_GH,
+                "{\"campos\":[" +
+                        "{\"nombre\":\"autorizado\",\"etiqueta\":\"Autorizado\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"permisoRemunerado\",\"etiqueta\":\"Permiso remunerado\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"observaciones\",\"etiqueta\":\"Observaciones\",\"tipo\":\"string\"}" +
+                        "]}"
+        );
+
+        TareaCampo ejecucion = new TareaCampo();
+        String titulo = (peticion.getTitulo() != null && !peticion.getTitulo().isBlank())
+                ? peticion.getTitulo().trim()
+                : TITULO_BASE_PERMISO + " - " + LocalDateTime.now().toLocalDate();
+        String descripcion = "Tipo: " + tipoPermiso + " | Motivo: " + motivo;
+        ejecucion.setTitulo(titulo);
+        ejecucion.setDescripcion(descripcion);
+        ejecucion.setEstado(EstadoTareaCampo.EN_PROCESO);
+        ejecucion.setEsPlantillaFlujo(false);
+        ejecucion.setSeccionPanel(SeccionPanelFlujo.OPERATIVOS);
+        ejecucion.setMenuInicioRol(RolNombre.ADMINISTRADOR.name());
+        ejecucion.setVisibleEnMenuFlujo(false);
+        ejecucion.setCreadoPor(solicitante);
+        ejecucion.setFormulario(formSolicitud);
+        ejecucion = tareaRepositorio.save(ejecucion);
+
+        String rolSolicitante = rolPrincipalParaFlujo(solicitante);
+        String respuestaSolicitud = String.format(
+                Locale.ROOT,
+                "{\"nombresApellidos\":\"%s\",\"cedula\":\"%s\",\"tipoPermiso\":\"%s\",\"fechaDesde\":\"%s\",\"fechaHasta\":\"%s\",\"horaDesde\":\"%s\",\"horaHasta\":\"%s\",\"fechaPermiso\":\"%s\",\"motivo\":\"%s\",\"soporteDescripcion\":\"%s\",\"soporteAdjuntoNombre\":\"%s\",\"soporteAdjuntoDataUrl\":\"%s\"}",
+                escaparJson(nombresApellidos),
+                escaparJson(cedula),
+                escaparJson(tipoPermiso),
+                escaparJson(valorSeguro(peticion.getFechaDesde())),
+                escaparJson(valorSeguro(peticion.getFechaHasta())),
+                escaparJson(valorSeguro(peticion.getHoraDesde())),
+                escaparJson(valorSeguro(peticion.getHoraHasta())),
+                escaparJson(valorSeguro(peticion.getFechaPermiso())),
+                escaparJson(motivo),
+                escaparJson(soporteDescripcion),
+                escaparJson(soporteAdjuntoNombre),
+                escaparJson(soporteAdjuntoDataUrl)
+        );
+        crearEtapaPedido(ejecucion, formSolicitud, ETAPA_PERMISO_SOLICITUD, 1, rolSolicitante, true, solicitante, respuestaSolicitud);
+        crearEtapaPedido(ejecucion, formAprobacionGh, ETAPA_PERMISO_APROBACION, 2, RolNombre.GESTION_HUMANA.name(), false, null, null);
+
+        HistorialTareaCampo h = new HistorialTareaCampo();
+        h.setTarea(ejecucion);
+        h.setEstadoAnterior(EstadoTareaCampo.EN_PROCESO);
+        h.setEstadoNuevo(EstadoTareaCampo.EN_PROCESO);
+        h.setComentario("Permiso registrado por solicitante. Pendiente aprobacion de Gestion Humana");
+        h.setUsuario(solicitante);
+        historialRepositorio.save(h);
+
+        return tareaRepositorio.findById(ejecucion.getId()).orElse(ejecucion);
+    }
+
+    @Transactional
+    public TareaCampo iniciarFlujoPreoperacionalVehiculo(Usuario tecnico) {
+        FormularioDinamico formPreoperacional = obtenerOCrearFormularioPedido(
+                NOMBRE_FORMULARIO_PREOPERACIONAL_VEHICULO,
+                "{\"campos\":[" +
+                        "{\"nombre\":\"fechaRevision\",\"etiqueta\":\"Fecha de revision\",\"tipo\":\"fecha\"}," +
+                        "{\"nombre\":\"placa\",\"etiqueta\":\"Placa del vehiculo\",\"tipo\":\"string\"}," +
+                        "{\"nombre\":\"kilometraje\",\"etiqueta\":\"Kilometraje actual\",\"tipo\":\"int\"}," +
+                        "{\"nombre\":\"nivelCombustible\",\"etiqueta\":\"Nivel de combustible\",\"tipo\":\"select\",\"opciones\":[\"RESERVA\",\"1/4\",\"1/2\",\"3/4\",\"LLENO\"]}," +
+                        "{\"nombre\":\"lucesOperativas\",\"etiqueta\":\"Luces operativas\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"frenosOperativos\",\"etiqueta\":\"Frenos operativos\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"llantasBuenEstado\",\"etiqueta\":\"Llantas en buen estado\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"botiquinExtintor\",\"etiqueta\":\"Botiquin y extintor vigentes\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"documentosAlDia\",\"etiqueta\":\"Documentos al dia\",\"tipo\":\"select\",\"opciones\":[\"SI\",\"NO\"]}," +
+                        "{\"nombre\":\"observaciones\",\"etiqueta\":\"Observaciones\",\"tipo\":\"string\"}" +
+                        "]}"
+        );
+
+        TareaCampo ejecucion = new TareaCampo();
+        ejecucion.setTitulo(TITULO_BASE_PREOPERACIONAL + " - " + LocalDateTime.now().toLocalDate());
+        ejecucion.setDescripcion("Checklist de seguridad y operacion antes de salida");
+        ejecucion.setEstado(EstadoTareaCampo.EN_PROCESO);
+        ejecucion.setEsPlantillaFlujo(false);
+        ejecucion.setSeccionPanel(SeccionPanelFlujo.FLOTA);
+        ejecucion.setMenuInicioRol(RolNombre.TECNICO.name());
+        ejecucion.setVisibleEnMenuFlujo(false);
+        ejecucion.setCreadoPor(tecnico);
+        ejecucion.setFormulario(formPreoperacional);
+        ejecucion = tareaRepositorio.save(ejecucion);
+
+        crearEtapaPedido(ejecucion, formPreoperacional, ETAPA_PREOPERACIONAL_TECNICO, 1, RolNombre.TECNICO.name(), false, null, null);
+
+        HistorialTareaCampo h = new HistorialTareaCampo();
+        h.setTarea(ejecucion);
+        h.setEstadoAnterior(EstadoTareaCampo.EN_PROCESO);
+        h.setEstadoNuevo(EstadoTareaCampo.EN_PROCESO);
+        h.setComentario("Preoperacional de vehiculo creado. Pendiente diligenciamiento por Tecnico");
+        h.setUsuario(tecnico);
         historialRepositorio.save(h);
 
         return tareaRepositorio.findById(ejecucion.getId()).orElse(ejecucion);
@@ -480,6 +635,43 @@ public class ServicioFlujoCampo {
         h.setEstadoNuevo(nuevoEstado);
         h.setComentario("[ADMIN EMERGENCIA] " + motivo.trim());
         h.setUsuario(admin);
+        historialRepositorio.save(h);
+
+        return tarea;
+    }
+
+    @Transactional
+    public TareaCampo cancelarEjecucionPorCreador(Long tareaId, Usuario solicitante, String motivo) {
+        TareaCampo tarea = tareaRepositorio.findById(tareaId)
+                .orElseThrow(() -> new RuntimeException("Ejecucion no encontrada"));
+        if (Boolean.TRUE.equals(tarea.getEsPlantillaFlujo())) {
+            throw new RuntimeException("No se puede cancelar una plantilla");
+        }
+        if (tarea.getEstado() == EstadoTareaCampo.TERMINADA || tarea.getEstado() == EstadoTareaCampo.CANCELADA) {
+            throw new RuntimeException("La ejecucion ya finalizo");
+        }
+        if (tarea.getCreadoPor() == null || !tarea.getCreadoPor().getId().equals(solicitante.getId())) {
+            throw new RuntimeException("Solo el usuario que inicio el flujo puede cancelarlo");
+        }
+
+        List<EtapaTareaCampo> etapas = etapaRepositorio.findByTarea_IdOrderByOrdenAsc(tareaId);
+        EtapaTareaCampo pasoActivo = etapas.stream().filter(e -> !Boolean.TRUE.equals(e.getCompletada())).findFirst().orElse(null);
+        if (pasoActivo != null && pasoActivo.getOrden() >= 2) {
+            throw new RuntimeException("No se puede cancelar: el flujo ya paso a su segunda etapa");
+        }
+
+        EstadoTareaCampo ant = tarea.getEstado();
+        tarea.setEstado(EstadoTareaCampo.CANCELADA);
+        tarea = tareaRepositorio.save(tarea);
+
+        HistorialTareaCampo h = new HistorialTareaCampo();
+        h.setTarea(tarea);
+        h.setEstadoAnterior(ant);
+        h.setEstadoNuevo(EstadoTareaCampo.CANCELADA);
+        h.setComentario((motivo != null && !motivo.isBlank())
+                ? motivo.trim()
+                : "Cancelado por el usuario que inicio el flujo");
+        h.setUsuario(solicitante);
         historialRepositorio.save(h);
 
         return tarea;
@@ -943,6 +1135,28 @@ public class ServicioFlujoCampo {
             return valorPorDefecto;
         }
         return "TRUE".equals(texto) || "SI".equals(texto) || "SÍ".equals(texto) || "1".equals(texto);
+    }
+
+    private String rolPrincipalParaFlujo(Usuario usuario) {
+        if (usuario == null || usuario.getRoles() == null || usuario.getRoles().isEmpty()) {
+            return RolNombre.ADMINISTRADOR.name();
+        }
+        if (usuarioTieneRolNombre(usuario, RolNombre.COMERCIAL.name())) return RolNombre.COMERCIAL.name();
+        if (usuarioTieneRolNombre(usuario, RolNombre.COMPRAS.name())) return RolNombre.COMPRAS.name();
+        if (usuarioTieneRolNombre(usuario, RolNombre.BODEGA.name())) return RolNombre.BODEGA.name();
+        if (usuarioTieneRolNombre(usuario, RolNombre.TECNICO.name())) return RolNombre.TECNICO.name();
+        if (usuarioTieneRolNombre(usuario, RolNombre.SUPERVISOR.name())) return RolNombre.SUPERVISOR.name();
+        if (usuarioTieneRolNombre(usuario, RolNombre.HSEQ.name())) return RolNombre.HSEQ.name();
+        if (usuarioTieneRolNombre(usuario, RolNombre.GESTION_HUMANA.name())) return RolNombre.GESTION_HUMANA.name();
+        return RolNombre.ADMINISTRADOR.name();
+    }
+
+    private String valorSeguro(String valor) {
+        return valor == null ? "" : valor.trim();
+    }
+
+    private String escaparJson(String valor) {
+        return valor.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private void marcarEtapaSaltada(Long tareaId, String nombreEtapa, Usuario usuario, String comentario) {

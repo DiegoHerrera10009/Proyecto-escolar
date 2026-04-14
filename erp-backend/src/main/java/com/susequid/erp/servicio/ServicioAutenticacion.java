@@ -48,11 +48,13 @@ public class ServicioAutenticacion {
 
         // Regla de negocio actual: desde el panel solo se crean roles operativos permitidos.
         boolean rolesValidos = rolesSolicitados.stream()
-                .allMatch(r -> r == RolNombre.BODEGA
+                .allMatch(r -> r == RolNombre.TECNICO
+                        || r == RolNombre.BODEGA
                         || r == RolNombre.COMPRAS
-                        || r == RolNombre.COMERCIAL);
+                        || r == RolNombre.COMERCIAL
+                        || r == RolNombre.GESTION_HUMANA);
         if (!rolesValidos) {
-            throw new RuntimeException("Solo se permite crear usuarios con rol BODEGA, COMPRAS o COMERCIAL");
+            throw new RuntimeException("Solo se permite crear usuarios con rol TECNICO, BODEGA, COMPRAS, COMERCIAL o GESTION_HUMANA");
         }
 
         Set<Rol> roles = rolesSolicitados.stream()
@@ -120,22 +122,22 @@ public class ServicioAutenticacion {
         }
         jdbcTemplate.execute(
                 "DELETE FROM usuarios_roles WHERE rol_id IN (" +
-                        "SELECT id FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL')" +
+                        "SELECT id FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','TECNICO','BODEGA','COMPRAS','COMERCIAL','GESTION_HUMANA')" +
                         ")"
         );
         jdbcTemplate.execute(
-                "DELETE FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL')"
+                "DELETE FROM roles WHERE nombre NOT IN ('ADMINISTRADOR','TECNICO','BODEGA','COMPRAS','COMERCIAL','GESTION_HUMANA')"
         );
         jdbcTemplate.execute("ALTER TABLE roles DROP CONSTRAINT IF EXISTS roles_nombre_check");
         jdbcTemplate.execute(
                 "ALTER TABLE roles ADD CONSTRAINT roles_nombre_check " +
                         "CHECK (nombre IN (" +
-                        "'ADMINISTRADOR','BODEGA','COMPRAS','COMERCIAL'" +
+                        "'ADMINISTRADOR','TECNICO','BODEGA','COMPRAS','COMERCIAL','GESTION_HUMANA'" +
                         "))"
         );
         jdbcTemplate.execute(
                 "INSERT INTO roles (nombre) VALUES " +
-                        "('ADMINISTRADOR'),('BODEGA'),('COMPRAS'),('COMERCIAL') " +
+                        "('ADMINISTRADOR'),('TECNICO'),('BODEGA'),('COMPRAS'),('COMERCIAL'),('GESTION_HUMANA') " +
                         "ON CONFLICT (nombre) DO NOTHING"
         );
     }

@@ -37,8 +37,10 @@ com\susequid\erp\repositorio\FormularioDinamicoRepositorio.class
 com\susequid\erp\servicio\ServicioAutenticacion.class
 com\susequid\erp\servicio\ServicioWorkflow.class
 com\susequid\erp\controlador\ControladorTareaCampo.class
+com\susequid\erp\dto\LineaPedidoPdfDto.class
 com\susequid\erp\repositorio\InventarioItemRepositorio.class
 com\susequid\erp\controlador\ControladorAutenticacion.class
+com\susequid\erp\dto\ParseoPedidoPdfRespuesta.class
 com\susequid\erp\controlador\ControladorPlantaElectrica.class
 com\susequid\erp\dto\CambioEstadoTareaCampoPeticion.class
 com\susequid\erp\repositorio\WorkflowProcesoRepositorio.class
@@ -52,6 +54,7 @@ com\susequid\erp\controlador\ControladorFlujoCampo.class
 com\susequid\erp\entidad\BitacoraWorkflow.class
 com\susequid\erp\repositorio\RespuestaFormularioRepositorio.class
 com\susequid\erp\entidad\EstadoTareaCampo.class
+com\susequid\erp\dto\CrearPermisoFlujoPeticion.class
 com\susequid\erp\entidad\TareaCampo.class
 com\susequid\erp\dto\CrearInstanciaFlujoPeticion.class
 com\susequid\erp\dto\EliminarCatalogoInventarioPeticion.class
@@ -64,6 +67,7 @@ com\susequid\erp\entidad\EstadoWorkflow.class
 com\susequid\erp\entidad\EvidenciaDigital.class
 com\susequid\erp\servicio\ServicioFlujoCampo.class
 com\susequid\erp\config\ManejadorGlobalExcepciones.class
+com\susequid\erp\servicio\ServicioParseoPedidoPdf.class
 com\susequid\erp\entidad\EquipoInventario.class
 com\susequid\erp\repositorio\PlantaElectricaRepositorio.class
 com\susequid\erp\controlador\ControladorEvidenciaDigital.class
